@@ -54,7 +54,7 @@ docker compose up -d    # 로컬 인프라 (MySQL 3306/3307, Redis 6379, Kafka 9
 - `.planning/codebase/` — 코드베이스 분석 7종 (STACK, ARCHITECTURE, STRUCTURE, CONVENTIONS, TESTING, INTEGRATIONS, CONCERNS). **2026-08-22 기준 스냅샷**이라 이 파일, ADR과 다르면 이 파일과 ADR이 우선
 - 각 모듈의 `AGENTS.md` — 모듈별 상세 가이드 (`common/`, `course/`, `notification/`, `geekchat/`)
 - `docs/adr/` — 아키텍처 결정 기록(ADR)
-- `deploy/README.md` — 배포 런북 (GitHub Actions → GHCR → WireGuard → SSH)
+- `deploy/README.md` — 배포 런북 (GitHub Actions → GHCR → SSH. 운영 Oracle A1은 공인 IP, 예비 VM은 WireGuard 경유)
 
 ## 전용 에이전트 (.claude/agents/)
 

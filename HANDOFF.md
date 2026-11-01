@@ -4,11 +4,11 @@
 
 ## 1. 마지막 갱신
 
-2026-10-20 (KST). 기준 커밋: develop `9d77af8`, main `e53fa71`.
+2026-11-01 (KST). 기준 커밋: develop `5780bed`, main `e53fa71`.
 
 ## 2. 프로젝트 한 줄 요약
 
-과외, 강의 수강신청 스케줄 앱 백엔드다. Spring Boot 4.1 / Java 21 모듈러 모놀리스(`app` 단일 JVM = course + notification)와 별도 Kotlin 앱 `geekchat`으로 이뤄진다. 운영 DB는 Supabase PostgreSQL(스키마 `ssa`, `geekchat`)이고, 배포는 main 푸시 → GHCR → WireGuard → SSH compose다. 에이전트 지침의 정본은 [AGENTS.md](AGENTS.md)다.
+과외, 강의 수강신청 스케줄 앱 백엔드다. Spring Boot 4.1 / Java 21 모듈러 모놀리스(`app` 단일 JVM = course + notification)와 별도 Kotlin 앱 `geekchat`으로 이뤄진다. 운영 DB는 Supabase PostgreSQL(스키마 `ssa`, `geekchat`)이고, 배포는 main 푸시 → GHCR(amd64와 arm64를 한 태그에) → SSH(운영 Oracle A1은 공인 IP, 예비 VM은 WireGuard 경유) compose다. 에이전트 지침의 정본은 [AGENTS.md](AGENTS.md)다.
 
 ## 3. 직전 세션들에서 한 일 (2026-10-02 릴리스 이후)
 
@@ -17,10 +17,17 @@
 - ✅ [#85](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/85) `4686234` 터널 출시 경로의 연결 지점 검증과 계획([docs/superpowers/plans/2026-10-04-tunnel-launch-seams.md](docs/superpowers/plans/2026-10-04-tunnel-launch-seams.md)). 계획만 있고 구현은 오너 승인 대기
 - ✅ [#86](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/86) `dda418c` 밀려난 SSE 커넥션의 정리가 같은 회원의 새 커넥션을 지우지 않게 했다. 테스트 5개: [SseSupersededConnectionTest](notification/src/test/java/com/example/simplescheduleapp/sse/presentation/SseSupersededConnectionTest.java)
 - ✅ [#87](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/87) `dacf3da` `SseController` 설명 정정(웹도 `EventSourcePolyfill`로 SSE를 쓴다)
-- ✅ [#89](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/89) `9d77af8` 새 운영 서버 기준 배포 런북. FCM 키 권한을 600에서 644로 바로잡았다(§7)
-- 🔶 [#88](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/88) SSE 회원당 다중 연결 구현 계획. open, 오너 승인 대기. 브랜치 `docs/sse-multi-connection-plan`
-- 🔶 [#90](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/90) 릴리스 PR(develop → main). open, CI 통과(7m35s, 8m3s). **머지 보류**: 새 서버 준비를 오너가 확인한 뒤 머지한다(2026-10-19 오너 결정)
-- 운영 사건: 2026-10-18 운영 서버가 교체됐다. 옛 `10.64.212.20`은 내려갔고 `.env`, FCM 키, 볼륨이 남지 않았다. 새 서버 `10.64.212.40`(`agent-worker`, Rocky Linux 10.2)은 관리자의 에이전트 작업과 같은 VM을 쓰는 공유 호스트이고, 2026-10-19 기준 아무것도 배포되지 않았다. 그래서 운영 서비스는 지금 멈춰 있다
+- ✅ [#88](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/88) `6f2f8ab` SSE 회원당 다중 연결 구현 계획([docs/superpowers/plans/2026-10-15-sse-multi-connection.md](docs/superpowers/plans/2026-10-15-sse-multi-connection.md)). 계획 문서만 들어갔고 실행은 오너 승인 대기
+- ✅ [#89](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/89) `9d77af8` 새 VM(지금은 예비) 기준 배포 런북. FCM 키 권한을 600에서 644로 바로잡았다(§7)
+- ✅ [#91](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/91) `61699f8` HANDOFF를 표준 8섹션으로 다시 썼다
+- ✅ [#92](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/92) `24d023d` Oracle Always Free(A1) 호스팅 선택지와 구현 계획([docs/superpowers/plans/2026-10-22-oracle-a1-hosting.md](docs/superpowers/plans/2026-10-22-oracle-a1-hosting.md))
+- ✅ [#93](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/93) `c1193a0` 조직 이전 반영. `deploy/.env.example`의 `GHCR_OWNER=simple-schedule-app`과 이 문서의 PR 링크
+- ✅ [#94](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/94) `0e68d34` Oracle A1 배포 경로. 이미지를 amd64와 arm64로 한 태그에 빌드하고(`Check image platforms` 단계가 검사), `prod` 환경 변수 `DEPLOY_NETWORK=direct`면 WireGuard 없이 공인 IP로 SSH한다. 런북 §1B
+- ✅ [#95](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/95) `32d069a` `deploy.yml` 주석에서 관리자 VPN 엔드포인트 실제 값을 가렸다. 공개 저장소의 git 이력과 다른 브랜치에는 남아 있다(§5의 3)
+- ✅ [#96](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/96) `5780bed` Oracle 홈 리전을 도쿄로 바로잡고, 첫 배포 뒤 확인에 DB 왕복 지연을 더했다
+- 🔶 [#90](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/90) 릴리스 PR(develop → main). open. head가 develop이라 develop에 커밋이 들어갈 때마다 CI가 다시 돈다(`5780bed`에서 통과, 2026-10-24). **머지 보류**: 서버 준비를 오너가 확인한 뒤 머지한다(2026-10-19 오너 결정. 2026-10-23부터 대상 서버는 Oracle A1)
+- 결정과 사건: 2026-10-23 저장소가 `jungsehui`에서 `simple-schedule-app` 조직으로 옮겨졌다(옛 주소는 리다이렉트된다). 같은 날 오너가 운영 서버를 Oracle Always Free A1(arm64)로 정했고 VM은 예비로 둔다. 2026-10-24 오너가 가입했고 홈 리전은 도쿄(`ap-tokyo-1`, 바꿀 수 없음)다. 인스턴스 생성과 서버 세팅이 어디까지 됐는지는 저장소에 기록이 없다(확인 필요)
+- 운영 사건: 2026-10-18 운영 서버가 교체됐다. 옛 `10.64.212.20`은 내려갔고 `.env`, FCM 키, 볼륨이 남지 않았다. 새 서버 `10.64.212.40`(`agent-worker`, Rocky Linux 10.2, 지금은 예비)은 관리자의 에이전트 작업과 같은 VM을 쓰는 공유 호스트이고, 2026-10-19 기준 아무것도 배포되지 않았다. 그래서 운영 서비스는 2026-10-18부터 멈춰 있다. 2026-11-01 기준 2026-10-02 뒤로 Deploy 실행이 없다
 - 그 전 이력 요약: 2026-08-02 단일 JVM 대점프 릴리스(Boot 4.1, ADR-0004, ADR-0005, Flyway 최초 실행). 2026-10-02 릴리스 [#82](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/82)(account P1, 운영 `ddl-auto: validate`, Kafka 재시도 수정, 의존성 업그레이드)가 옛 서버의 마지막 성공 배포다(`e53fa71`)
 
 ## 4. 현재 git 상태
@@ -28,18 +35,19 @@
 | 위치 | 브랜치 | HEAD | 메모 |
 |---|---|---|---|
 | `origin/main` | main | `e53fa71` | 마지막 성공 배포(2026-10-02, 옛 서버) |
-| `origin/develop` | develop | `9d77af8` | main보다 6커밋 앞(#83~#87, #89). 실행 중인 앱에 닿는 변경은 #86 하나이고, DB 마이그레이션과 `deploy/` 번들은 바뀌지 않았다 |
-| `simple-schedule-app-be/ssa/` (주 체크아웃) | main | `e53fa71` | `.claude/settings.json`(수정)과 `.claude/hooks/`(추적 안 됨)는 #84 훅을 미리 덮어쓴 것이다. #90이 main에 들어간 뒤 당기기 전에 `git restore .claude/settings.json && rm .claude/hooks/stop-tests.sh`로 걷어 낸다. `.omc/` 변경은 도구 상태라 커밋하지 않는다 |
+| `origin/develop` | develop | `5780bed` | main보다 13커밋 앞(#83~#89, #91~#96). 실행 중인 앱에 닿는 변경은 #86 하나다. #94는 배포 경로(`deploy.yml`, `geekchat/Dockerfile`)를 바꾼다. DB 마이그레이션, `deploy/docker-compose.prod.yml`, `deploy/nginx`는 바뀌지 않았다 |
+| `simple-schedule-app-be/ssa/` (주 체크아웃) | main | `e53fa71` | (2026-10-20 기록. 그 뒤로 확인하지 않았다) `.claude/settings.json`(수정)과 `.claude/hooks/`(추적 안 됨)는 #84 훅을 미리 덮어쓴 것이다. #90이 main에 들어간 뒤 당기기 전에 `git restore .claude/settings.json && rm .claude/hooks/stop-tests.sh`로 걷어 낸다. `.omc/` 변경은 도구 상태라 커밋하지 않는다 |
 | `simple-schedule-app-be/.wt-ssa-analysis/` (worktree) | 작업 브랜치 | | 작업은 여기서 한다 |
 
 ## 5. 다음 작업 우선순위
 
-1. **새 서버 준비 → #90 머지(운영 배포).** 오너와 관리자가 한다. 순서:
-   1. 관리자에게 계정을 요청한다.
-   2. [deploy/README.md](deploy/README.md) §1을 따른다: Docker CE, `/opt/ssa`, `.env`(600), FCM 키(644), SELinux.
-   3. §2에서 시크릿 4개를 갱신한다(`DEPLOY_SSH_KEY`는 새로 발급).
-   4. 노트북에서 접속 점검을 한 뒤 WireGuard를 끈다.
-   5. 오너 확인을 받고 #90을 머지한다.
+1. **Oracle A1 서버 준비 → #90 머지(운영 배포).** 오너가 한다. 순서의 정본은 #90 본문의 "머지 전" 1~6과 [deploy/README.md](deploy/README.md) §1B다.
+   1. 도쿄 리전에 A1 인스턴스를 만든다. "out of host capacity"면 나중에 다시 시도한다(도쿄는 가용 도메인이 하나다).
+   2. §1B 서버 세팅: Docker CE, 계정 `ubuntu`(오너)와 `ssa-deploy`(CI, docker 그룹), `/opt/ssa`, `.env`(600, `GHCR_OWNER=simple-schedule-app`), FCM 키(644). 보안 목록은 22만 연다.
+   3. §2: 시크릿 `DEPLOY_HOST`(공인 IP), `DEPLOY_USER`(`ssa-deploy`), `DEPLOY_SSH_KEY`(새로 발급), `DEPLOY_SSH_KNOWN_HOSTS`와 `prod` 환경 변수 `DEPLOY_NETWORK=direct`.
+   4. 노트북에서 CI와 같은 조건의 접속 점검을 한다(§2의 3). Oracle은 VPN 없이 한다.
+   5. 아래 2의 특강 확인 뒤 오너 확인을 받고 #90을 머지한다. 첫 배포 뒤 확인은 #90 본문의 "배포 후 확인"과 §1B의 "첫 배포 뒤 확인"이다.
+   - 예비 VM으로 갈 때는 §1과 WireGuard 경로를 쓴다. 관리자에게 계정을 요청하는 데서 시작한다.
 2. **첫 배포 전 특강 정원 키 확인.** 새 서버의 Redis는 비어 있고, 정원 키를 자동으로 다시 채우는 경로가 없다. 진행 중인 특강이 DB에 있으면 그 신청은 `SPECIAL_LECTURE_CAPACITY_UNAVAILABLE`로 실패하고 ERROR 로그가 남는다([SpecialLectureRedisClient.java](course/src/main/java/com/example/simplescheduleapp/lecture/special/application/SpecialLectureRedisClient.java)의 `resolveMissingKeyCause`). 아래 쿼리는 시간대 차이를 덮으려고 하루 여유를 둔 넉넉한 목록이다.
    ```sql
    SELECT sl.schedule_id, sl.capacity, s.end_time
@@ -49,8 +57,9 @@
    ```
    행이 있으면 남은 정원(정원에서 신청 수를 뺀 값)으로 정원 키와 마감 키를 다시 넣어야 한다. 그 절차와 도구는 아직 없다(확인 필요).
 3. **오너 결정 대기:**
-   - 공유 호스트에서 CI 키에 docker 그룹(사실상 root 권한)을 줄지, 관리자와 정한다.
+   - 예비 VM(공유 호스트)을 쓸 때만: CI 키에 docker 그룹(사실상 root 권한)을 줄지 관리자와 정한다. Oracle에서는 전용 계정 `ssa-deploy`가 docker 그룹이다(§1B).
    - 시크릿 재발급 범위. 전부 재발급을 권한다.
+   - 공개 저장소의 git 이력과 다른 브랜치에 남은 관리자 VPN 엔드포인트 실제 값(#95). 엔드포인트를 바꿀지, 그대로 둘지.
    - #88 다중 연결 계획의 승인과 실행 방식.
    - 터널 ① realip 구현 승인.
 4. **남은 부채:**
@@ -86,12 +95,16 @@ memguard -- ./gradlew --max-workers=2 buildAll                      # CI와 같�
 
 **배포와 운영**
 - develop → main 머지는 곧 운영 배포다. `deploy.yml`의 paths-ignore는 `**.md`, `docs/**`, `.planning/**`뿐이다. 오너 확인 뒤에만 머지하고, 릴리스는 merge commit으로 한다(#82와 같은 방식).
-- 배포 중에는 노트북 WireGuard 터널을 끈다. CI가 같은 피어 키를 쓴다. 실패하면 `gh run rerun <id> --failed`로 다시 돌린다.
-- CI 접속 단계의 실패 메시지는 "피어 키 충돌"만 안내한다. 새 서버에서는 키, 계정, `authorized_keys`, 호스트 키 고정이 틀려도 같은 메시지가 나온다. 런북 §2의 3에 있는 노트북 점검으로 먼저 가린다.
+- 예비 VM(WireGuard 경로)으로 배포할 때만: 배포 중에는 노트북 WireGuard 터널을 끈다. CI가 같은 피어 키를 쓴다. Oracle(`DEPLOY_NETWORK=direct`)은 WireGuard를 쓰지 않는다. 실패하면 `gh run rerun <id> --failed`로 다시 돌린다.
+- CI 접속 단계(`Verify SSH connectivity`)의 실패 안내는 경로별로 나뉜다(#94). 어느 경로든 키, 계정, `authorized_keys`, 호스트 키 고정이 틀리면 같은 실패가 나므로, 런북 §2의 3에 있는 노트북 점검으로 먼저 가린다.
+- `DEPLOY_NETWORK`는 소문자 `direct`로 넣는다. WireGuard 단계를 건너뛸지 정하는 단계 `if`는 GitHub 표현식이라 대소문자를 구분하지 않는다. 그래서 `Direct`도 WireGuard를 건너뛴다. 반면 실패 안내를 고르는 셸 비교는 대소문자를 구분해서, 이때는 WireGuard용 안내가 나온다(`deploy.yml` 137, 192, 246행). 철자가 아예 다르면 WireGuard 경로로 가서 터널 단계에서 실패한다.
+- 서버 `.env`의 `GHCR_OWNER`는 `simple-schedule-app`이다(2026-10-23 조직 이전). 옛 값이면 서버가 새 이미지 태그를 찾지 못한다.
+- Oracle(arm64)에서는 #90 머지 커밋을 통째로 되돌리지 않는다. 되돌린 트리에는 다중 아키텍처 빌드가 없고, 그 전 SHA의 이미지는 모두 amd64 전용이다. 앱 문제는 해당 변경만 되돌린다(런북 §5의 arm64 롤백).
+- 운영 서버는 도쿄, DB(Supabase)는 서울이다. 쿼리마다 리전 간 왕복이 더해진다. 첫 배포 뒤 확인에서 응답 시간을 재 둔다(§1B).
 - main 끝이 곧 배포된 것은 아니다. 배포가 실패해도 main은 앞으로 간다. 롤백 기준은 `gh run list --workflow deploy.yml`의 마지막 success다.
 - nginx는 `up -d`로 갱신되지 않는다. CD가 `docker restart ssa-nginx`를 하고(reload가 아니라 restart여야 upstream DNS를 다시 푼다), 스모크는 401이어야 통과다.
 - FCM 키는 644여야 한다. 앱 컨테이너 사용자 `spring`이 읽어야 하므로, 600이면 `FcmConfig`가 기동을 멈춘다. 키는 `secrets` 디렉터리의 700 권한이 지킨다.
-- 원격 명령의 URL은 따옴표로 감싼다. 옛 서버 셸 zsh가 `?`를 글로브로 먹어 2026-08-13 스모크가 거짓으로 실패했다. 새 서버의 셸은 확인 필요.
+- 원격 명령의 URL은 따옴표로 감싼다. 옛 서버 셸 zsh가 `?`를 글로브로 먹어 2026-08-13 스모크가 거짓으로 실패했다. Oracle의 `ssa-deploy`는 bash로 만든다(§1B). 예비 VM의 셸은 확인 필요.
 - `JWT_SECRET`은 base64url이어야 한다. GHCR pull은 CI의 `GITHUB_TOKEN`으로만 된다(gh CLI 토큰엔 `read:packages`가 없다). Supabase는 세션 풀러 호스트로 붙는다(direct 호스트는 IPv6 전용).
 
 **빌드와 테스트**
@@ -113,8 +126,8 @@ memguard -- ./gradlew --max-workers=2 buildAll                      # CI와 같�
 
 | 하려는 일 | 첫 행동 |
 |---|---|
-| 서버 준비가 끝나 배포 | 오너 확인 → §5의 2 쿼리로 진행 중 특강 확인 → WireGuard 끄기 → `gh pr merge 90 --merge` → Deploy 실행 결과와 스모크 401 확인 → [deploy/README.md](deploy/README.md) §1의 "확인" 절 |
-| #88 승인됨 | 브랜치 `docs/sse-multi-connection-plan`의 `docs/superpowers/plans/2026-10-15-sse-multi-connection.md`를 읽고 Task 1부터 |
+| Oracle 서버 준비가 끝나 배포 | #90 본문 "머지 전" 1~6 확인(§5의 2 특강 쿼리 포함) → 오너 확인 → `gh pr merge 90 --merge` → Deploy의 두 빌드 잡 `Check image platforms`와 스모크 401 확인 → #90 "배포 후 확인"과 [deploy/README.md](deploy/README.md) §1B의 "첫 배포 뒤 확인" |
+| #88 승인됨 | [docs/superpowers/plans/2026-10-15-sse-multi-connection.md](docs/superpowers/plans/2026-10-15-sse-multi-connection.md)를 읽고 Task 1부터 |
 | 터널 ① 구현 승인됨 | [docs/superpowers/plans/2026-10-04-tunnel-launch-seams.md](docs/superpowers/plans/2026-10-04-tunnel-launch-seams.md)의 ① |
 | 특강 정원 키 재적재 도구 | `SpecialLectureRedisClient.initializeSpecialLecture`와 신청 수 집계를 묶는 일회성 절차부터 설계 |
 | 부채 정리 | §5의 4 목록에서 하나를 골라 계획부터 |

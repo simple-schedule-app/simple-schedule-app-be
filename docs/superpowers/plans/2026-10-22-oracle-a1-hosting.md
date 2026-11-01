@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **상태:** 계획만. 오너가 Oracle로 가기로 정하기(O) 전에는 실행하지 않는다.
+> **상태:** 오너 결정 O(2026-10-23). Task 1~3은 [#94](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/94)(develop `0e68d34`, 2026-10-24)로 구현했다. 남은 것은 서버 준비(오너), #90 머지(배포), 첫 배포 뒤 측정에 따른 Task 4(조건부)다. Task 1~3의 체크 표시 근거: 구현은 develop의 `deploy.yml`, `geekchat/Dockerfile`, `deploy/README.md` §1B와 §2에 있고, 로컬 검증 단계(Task 1의 Step 2와 4, Task 2의 Step 4, Task 3의 Step 4)는 #94 커밋 메시지의 기록이다(2026-11-01 정리).
 > **요청:** 오케스트레이터(2026-10-22). 새 VM `10.64.212.40`은 22번만 열린 채 비어 있고, 관리자 계정 요청은 아직 보내지 않았다. 오너가 외부 공개 무료 호스팅을 물었고, 지속 무료로 지금 compose를 올릴 수 있는 후보로 Oracle Always Free A1이 남았다.
 > **기준:** develop `61699f8`, main `e53fa71`(마지막 성공 배포 2026-10-02).
 
@@ -127,11 +127,11 @@ Oracle 튜토리얼의 iptables 단계는 호스트에서 직접 듣는 프로�
 **Interfaces:**
 - Produces: GHCR `ssa-app:<sha>`, `ssa-geekchat:<sha>`가 `linux/amd64`와 `linux/arm64`를 담은 매니페스트 목록이 된다. 태그 이름과 deploy 잡은 그대로라 서버는 자기 아키텍처를 받는다.
 
-- [ ] **Step 1: geekchat 빌드 단계를 빌더 플랫폼에 고정한다**
+- [x] **Step 1: geekchat 빌드 단계를 빌더 플랫폼에 고정한다**
 
 `geekchat/Dockerfile:4`를 `FROM --platform=$BUILDPLATFORM eclipse-temurin:21-jdk-alpine AS builder`로 바꾼다. 런타임 단계(`FROM eclipse-temurin:21-jre-alpine`)는 그대로 둔다.
 
-- [ ] **Step 2: 로컬에서 두 플랫폼 이미지를 만들어 아키텍처를 확인한다**
+- [x] **Step 2: 로컬에서 두 플랫폼 이미지를 만들어 아키텍처를 확인한다**
 
 베이스 이미지를 받아야 하므로 실행 전에 오너에게 내려받기를 확인받는다. 이 맥은 arm64라 arm64는 네이티브, amd64는 에뮬레이션으로 돈다.
 
@@ -146,11 +146,11 @@ docker run --rm --entrypoint uname ssa-app:arm64-check -m             # 기대: 
 docker run --rm --entrypoint id ssa-app:arm64-check                   # spring의 uid. #89에서 가정으로 둔 값을 확정한다
 ```
 
-- [ ] **Step 3: CD 빌드 잡에 QEMU, Buildx, 플랫폼을 넣는다**
+- [x] **Step 3: CD 빌드 잡에 QEMU, Buildx, 플랫폼을 넣는다**
 
 `Login to GHCR` 앞에 `docker/setup-qemu-action@v4`(입력 `platforms: arm64`)와 `docker/setup-buildx-action@v4` 단계를 둔다. `Build & Push image`의 `with:`에 `platforms: linux/amd64,linux/arm64`를 더한다. 그 뒤에 `Show image platforms` 단계를 두고 `docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ github.repository_owner }}/ssa-${{ matrix.module }}:${{ github.sha }}`를 돌린다. 이 출력에 `linux/amd64`와 `linux/arm64`가 둘 다 있어야 한다.
 
-- [ ] **Step 4: 워크플로 문법을 검사한다**
+- [x] **Step 4: 워크플로 문법을 검사한다**
 
 `deploy.yml`은 main 푸시와 수동 실행에서만 돌아서, 문법 오류가 릴리스 때 처음 드러난다. 그래서 머지 전에 actionlint로 본다(이미지 내려받기는 오너 확인).
 
@@ -160,7 +160,7 @@ docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color .github/
 
 기대: 출력 없음, 종료 코드 0. `1.7.12`는 2026-10-22 기준 최신 릴리스(2026-03-30)다. 실행 때 더 새 판이 있으면 그 값으로 고정하고 커밋 메시지에 남긴다.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add geekchat/Dockerfile .github/workflows/deploy.yml
@@ -177,25 +177,25 @@ git commit -m "build(deploy): 이미지를 amd64와 arm64로 함께 만든다"
 **Interfaces:**
 - Consumes: GitHub 환경 `prod`의 변수 `DEPLOY_NETWORK`(`vars.DEPLOY_NETWORK`). 시크릿이 아니라 변수다.
 
-- [ ] **Step 1: 머리 주석에 변수를 적는다**
+- [x] **Step 1: 머리 주석에 변수를 적는다**
 
 필요한 시크릿 목록 아래에 `DEPLOY_NETWORK`(환경 변수): `direct`면 공인 IP로 바로 SSH(WireGuard 단계 건너뜀), 없거나 다른 값이면 WireGuard. `direct`일 때 `WG_*` 시크릿은 필요 없다.
 
-- [ ] **Step 2: WireGuard 설정과 해제에 조건을 단다**
+- [x] **Step 2: WireGuard 설정과 해제에 조건을 단다**
 
 `Set up WireGuard tunnel`에 `if: vars.DEPLOY_NETWORK != 'direct'`, `Teardown WireGuard`의 `if: always()`를 `if: always() && vars.DEPLOY_NETWORK != 'direct'`로 바꾼다.
 
-- [ ] **Step 3: 접속 확인 단계의 이름과 안내를 경로에 맞춘다**
+- [x] **Step 3: 접속 확인 단계의 이름과 안내를 경로에 맞춘다**
 
 이름을 `Verify SSH connectivity (fail fast)`로 바꾼다. 재시도 루프는 그대로 두고, 마지막 `::error::` 안내만 경로별로 나눈다.
 - WireGuard: 지금 문구(같은 피어 키를 쓰는 다른 기기)에 "키, 계정, `authorized_keys`, 호스트 키 고정이 틀려도 같은 증상"을 더한다.
 - `direct`: "공인 IP SSH 불가: 보안 목록의 22, 배포 키, 계정, 호스트 키 고정(`DEPLOY_SSH_KNOWN_HOSTS`)을 확인".
 
-- [ ] **Step 4: 검사한다**
+- [x] **Step 4: 검사한다**
 
 Task 1 Step 4의 actionlint를 다시 돌린다(기대: 출력 없음). `git diff`에서 변수가 없을 때 바뀌는 것이 안내 문구뿐인지 본다.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add .github/workflows/deploy.yml
@@ -210,7 +210,7 @@ git commit -m "build(deploy): DEPLOY_NETWORK=direct면 WireGuard 없이 공인 I
 **Interfaces:**
 - Consumes: Task 2의 `DEPLOY_NETWORK`. 기존 `CLOUDFLARE-TUNNEL.md` 절차.
 
-- [ ] **Step 1: §1B를 쓴다.** 담을 값은 아래와 같다.
+- [x] **Step 1: §1B를 쓴다.** 담을 값은 아래와 같다.
   - 가입: 홈 리전은 **Japan East(Tokyo, `ap-tokyo-1`)**(2026-10-24 정정. 서울은 가입 화면의 무료 계층 목록에 없었다). 춘천은 A1을 만들 수 없고 홈 리전은 바꿀 수 없다.
   - 인스턴스: `VM.Standard.A1.Flex` 2 OCPU / 12 GB, Ubuntu 24.04(aarch64), 부트 볼륨 50 GB, 공인 IP, 오너 SSH 공개키. "out of host capacity"면 다른 가용 도메인이나 나중에 다시 시도한다.
   - 보안 목록: 기본(22)만 둔다. 80과 443은 열지 않는다(§2.3).
@@ -221,17 +221,17 @@ git commit -m "build(deploy): DEPLOY_NETWORK=direct면 WireGuard 없이 공인 I
   - sshd 확인: `sudo sshd -T | grep -i -e '^passwordauthentication' -e '^permitrootlogin'`. 비밀번호 로그인이 `no`인지 본다.
   - 공개 접점: `CLOUDFLARE-TUNNEL.md` 절차 그대로 한다.
   - 노출 확인: 서버가 아닌 곳에서 `curl -m 5 -s -o /dev/null -w '%{http_code}\n' "http://<공인 IP>/"`. 기대는 연결 실패(`000`)다. 응답이 오면 보안 목록에 80이 열린 것이다.
-- [ ] **Step 2: §2에 Oracle 항목을 더한다.** 넣을 값은 다음과 같다. `WG_*`는 필요 없다.
+- [x] **Step 2: §2에 Oracle 항목을 더한다.** 넣을 값은 다음과 같다. `WG_*`는 필요 없다.
   - 시크릿: `DEPLOY_HOST`=공인 IP, `DEPLOY_USER`=`ssa-deploy`, `DEPLOY_SSH_KEY`, `DEPLOY_SSH_KNOWN_HOSTS`(`ssh-keyscan <공인 IP>`. 지문은 오너가 `ubuntu`로 붙어 `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`로 본 값과 대조).
   - 환경 변수: `DEPLOY_NETWORK`=`direct`.
   - 사전 점검: §2의 3 명령을 VPN 없이 그대로 돌린다.
-- [ ] **Step 3: 첫 배포 확인과 유휴 회수 측정을 적는다.**
+- [x] **Step 3: 첫 배포 확인과 유휴 회수 측정을 적는다.**
   - 스모크 401을 확인한다.
   - `docker logs ssa-app 2>&1 | grep -i -e UnsatisfiedLinkError -e 'native'`과 `docker logs ssa-geekchat 2>&1 | grep -i UnsatisfiedLinkError`가 비어 있는지 본다.
   - `free -m`의 used / total과 `docker stats --no-stream --format '{{.Name}} {{.MemUsage}}'`를 기록한다.
   - 콘솔의 인스턴스 Metrics에서 Memory Utilization을 첫 주 동안 본다.
-- [ ] **Step 4: 검사한다.** 링크한 상대 경로가 실재하는지, em dash와 가운뎃점이 0건인지(같은 검사가 기존 줄의 em dash를 잡는지 역검증) 본다.
-- [ ] **Step 5: Commit** `docs(deploy): Oracle Always Free(A1) 서버 세팅 변형을 런북에 더한다`
+- [x] **Step 4: 검사한다.** 링크한 상대 경로가 실재하는지, em dash와 가운뎃점이 0건인지(같은 검사가 기존 줄의 em dash를 잡는지 역검증) 본다.
+- [x] **Step 5: Commit** `docs(deploy): Oracle Always Free(A1) 서버 세팅 변형을 런북에 더한다`
 
 ### Task 4 (조건부): 메모리 상주량을 고정한다
 
@@ -261,7 +261,7 @@ git commit -m "build(deploy): DEPLOY_NETWORK=direct면 WireGuard 없이 공인 I
 ## 4. 실행 순서와 역할
 
 1. 오너: O 결정 → 도쿄 리전으로 가입(2026-10-24 완료. 서울은 가입 화면 목록에 없었다) → 인스턴스 생성(용량 부족이면 재시도. 도쿄는 가용 도메인이 하나다)
-2. BE: Task 1, 2, 3을 develop에 넣는다. 서버 준비와 동시에 할 수 있다.
+2. BE: Task 1, 2, 3을 develop에 넣는다. 서버 준비와 동시에 할 수 있다. (완료: #94, 2026-10-24)
 3. 오너: §1B 서버 세팅 → 터널 → 시크릿과 `DEPLOY_NETWORK` → 노트북 사전 점검
 4. 오너 확인 → #90 머지(배포) → 스모크와 §1B 첫 배포 확인
 5. 측정 결과에 따라 Task 4
