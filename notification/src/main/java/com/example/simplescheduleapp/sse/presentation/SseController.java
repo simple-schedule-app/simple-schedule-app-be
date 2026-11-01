@@ -21,8 +21,9 @@ public class SseController {
      *
      * <p>이전 계약 {@code GET /sse-stream/{memberId}}는 경로 변수에 남의 식별자를 넣어 <b>타인의 알림을
      * 구독</b>할 수 있었다. "네이티브 EventSource는 Authorization 헤더를 못 보낸다"가 그 폴백의 근거였으나
-     * 실제 클라이언트는 그렇지 않다 — 웹은 SSE를 쓰지 않고, 안드로이드는 OkHttp {@code EventSources}에
-     * 인증 인터셉터가 달린 클라이언트를 그대로 넘긴다. 그래서 식별자를 받는 경로 변수를 계약에서 없앴다.
+     * 실제 클라이언트는 그렇지 않다. 웹은 {@code EventSourcePolyfill}로 {@code Authorization} 헤더를 싣고,
+     * 안드로이드는 OkHttp {@code EventSources}에 인증 인터셉터가 달린 클라이언트를 그대로 넘긴다.
+     * 그래서 식별자를 받는 경로 변수를 계약에서 없앴다.
      */
     @GetMapping(value = "/sse-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter connectSse(@Auth Long memberId) {

@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./gradlew -q :common:test :course:test :notification:test",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-tests.sh\"",
             "timeout": 600
           }
         ]

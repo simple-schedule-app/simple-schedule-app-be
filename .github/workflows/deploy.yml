@@ -1,17 +1,22 @@
-# CD: GHCR에 이미지 빌드/푸시 후, WireGuard VPN을 통해 배포 서버에 SSH 배포
+# CD: GHCR에 이미지 빌드/푸시 후, WireGuard VPN 또는 공인 IP로 배포 서버에 SSH 배포
 #
 # 필요한 GitHub Secrets (Settings > Secrets and variables > Actions):
 #   WG_PRIVATE_KEY        : 배포용 WireGuard 피어의 개인키 (반드시 새로 발급받은 키 사용)
 #   WG_ADDRESS            : 배포용 피어 주소 (예: 10.36.187.13/24 — 개인 노트북 피어와 다른 IP)
 #   WG_PEER_PUBLIC_KEY    : 서버측 WireGuard 공개키
 #   WG_PRESHARED_KEY      : PresharedKey (새로 발급 권장)
-#   WG_ENDPOINT           : VPN 엔드포인트 (예: dokalab.iptime.org:40773)
+#   WG_ENDPOINT           : VPN 엔드포인트 (형식: <VPN_PEER_ENDPOINT>:<PORT>. 실제 값은 시크릿과 비공개 채널에만 둔다)
 #   WG_ALLOWED_IPS        : 서버 서브넷만 허용 (예: 10.64.212.0/24,10.36.187.0/24)
 #                           ⚠ 0.0.0.0/0 금지 — 러너의 GitHub 연결까지 VPN으로 빨려들어가 배포가 끊김
 #   DEPLOY_SSH_KEY        : 배포 전용 SSH 개인키 (ed25519 새로 발급, 서버 authorized_keys에 공개키 등록)
 #   DEPLOY_SSH_KNOWN_HOSTS: ssh-keyscan 결과 (서버 호스트키 고정 — MITM 방지)
-#   DEPLOY_HOST           : 배포 서버 IP (예: 10.64.212.20)
+#   DEPLOY_HOST           : 배포 서버 IP (예: 10.64.212.40. DEPLOY_NETWORK=direct면 공인 IP)
 #   DEPLOY_USER           : 배포 계정 (sudo 없이 docker 그룹 권한만 가진 전용 계정 권장)
+#
+# 필요한 GitHub 환경 변수 (Settings > Environments > prod > Environment variables, 시크릿이 아니다):
+#   DEPLOY_NETWORK        : 배포 서버에 붙는 경로. 소문자 direct면 공인 IP로 바로 SSH하고 WireGuard 단계를
+#                           건너뛴다(이때 WG_* 시크릿은 필요 없다). 없거나 다른 값이면 지금처럼 WireGuard다.
+#                           오타(Direct 등)는 WireGuard 경로로 가서 터널 단계에서 실패한다.
 name: Deploy
 
 on:
@@ -75,6 +80,17 @@ jobs:
           chmod +x gradlew
           ./gradlew ${{ matrix.gradle_task }}
 
+      # arm64 서버(Oracle A1)와 amd64 서버(VM)가 같은 태그를 받도록 두 플랫폼을 한 매니페스트로 만든다.
+      # QEMU는 app 이미지의 RUN 한 줄(useradd)에만 쓰인다. geekchat은 빌드 단계를 러너 플랫폼에
+      # 고정해 Gradle을 에뮬레이션으로 돌리지 않는다(geekchat/Dockerfile).
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
       - name: Login to GHCR
         uses: docker/login-action@v4
         with:
@@ -87,10 +103,25 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/ssa-${{ matrix.module }}:${{ github.sha }}
             ${{ env.REGISTRY }}/${{ github.repository_owner }}/ssa-${{ matrix.module }}:latest
+
+      # 두 플랫폼이 실제로 올라갔는지 확인한다. 서버 아키텍처의 이미지가 빠지면 배포 단계까지 가서야
+      # 컨테이너가 exec format error로 뜨지 않는 것으로 드러나므로, 여기서 빌드를 실패시킨다.
+      - name: Check image platforms
+        run: |
+          image="${{ env.REGISTRY }}/${{ github.repository_owner }}/ssa-${{ matrix.module }}:${{ github.sha }}"
+          out=$(docker buildx imagetools inspect "$image")
+          echo "$out"
+          for platform in linux/amd64 linux/arm64; do
+            if ! echo "$out" | grep -Eq "Platform:[[:space:]]+${platform}"; then
+              echo "::error::$image 에 $platform 이미지가 없다"
+              exit 1
+            fi
+          done
 
   deploy:
     needs: build-and-push
@@ -103,6 +134,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up WireGuard tunnel
+        if: vars.DEPLOY_NETWORK != 'direct'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq wireguard-tools
@@ -144,7 +176,9 @@ jobs:
           EOF
           sed -i "s/Host deploy-target/Host ${{ secrets.DEPLOY_HOST }}/" ~/.ssh/config
 
-      - name: Verify tunnel connectivity (fail fast)
+      - name: Verify SSH connectivity (fail fast)
+        env:
+          DEPLOY_NETWORK: ${{ vars.DEPLOY_NETWORK }}
         run: |
           # WG 핸드셰이크는 wg-quick up 성공만으로 보장되지 않음 (동일 피어 키를 다른 기기가
           # 점유 중이면 패킷이 그쪽으로 감). 90초 내 SSH 왕복 실패 시 명확한 메시지로 즉시 실패.
@@ -155,7 +189,11 @@ jobs:
             fi
             echo "attempt $i failed; retrying in 15s..."; sleep 15
           done
-          echo "::error::WireGuard 터널로 서버 SSH 불가 — 동일 피어 키를 쓰는 다른 기기(개인 노트북)의 터널이 Active인지 확인 후 re-run 하세요."
+          if [ "$DEPLOY_NETWORK" = "direct" ]; then
+            echo "::error::공인 IP로 서버 SSH 불가. 보안 목록의 22번, 배포 키(DEPLOY_SSH_KEY), 계정(DEPLOY_USER), 호스트 키 고정(DEPLOY_SSH_KNOWN_HOSTS)을 확인하세요."
+          else
+            echo "::error::WireGuard 터널로 서버 SSH 불가. 동일 피어 키를 쓰는 다른 기기(개인 노트북)의 터널이 Active인지 확인 후 re-run 하세요. 키, 계정, authorized_keys, 호스트 키 고정이 틀려도 같은 증상입니다."
+          fi
           exit 1
 
       - name: Sync deploy bundle
@@ -188,7 +226,7 @@ jobs:
 
       # 배포가 실제로 살아났는지 확인한다. 위 단계까지 성공해도 nginx가 백엔드에 닿지
       # 못하면 전면 502이므로, 여기서 잡지 않으면 초록 배포로 장애가 나간다.
-      # URL을 반드시 따옴표로 감쌀 것 — 서버 로그인 셸이 zsh이고, zsh는 따옴표 없는 `?`를
+      # URL을 반드시 따옴표로 감쌀 것. 옛 서버(2026-10 교체 전)는 로그인 셸이 zsh였고, zsh는 따옴표 없는 `?`를
       # 글로브 패턴으로 해석해 "no matches found"로 명령 자체를 실행하지 않는다(bash와 다름).
       # 2026-08-13 배포에서 이것 때문에 curl이 아예 돌지 않아 000이 나왔고, 운영은 멀쩡한데
       # 스모크만 거짓 실패했다.
@@ -205,5 +243,5 @@ jobs:
              exit 1'
 
       - name: Teardown WireGuard
-        if: always()
+        if: always() && vars.DEPLOY_NETWORK != 'direct'
         run: sudo wg-quick down wg0 || true

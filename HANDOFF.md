@@ -1,106 +1,121 @@
-# SSA Backend — HANDOFF
+# SSA Backend HANDOFF
 
-> 마지막 갱신: 2026-07-17 · 브랜치 `develop` (`5987d3d`)
-> 작업 트리: worktree `simple-schedule-app-be/.wt-ssa-analysis` · inner repo `simple-schedule-app-be/ssa` (main, `2c6a7b0`로 최신화됨)
+> 새 세션의 단일 진입점이다. 지금 상태와 다음 행동만 적는다. 지난 이력은 git 로그, [docs/adr/](docs/adr/), [deploy/README.md](deploy/README.md)에 있다.
 
-## -3. ✅ ADR-0004 전면 도메인 순수화 완료 (PR #24, `5987d3d`, 2026-07-17)
-ADR-0002가 걸어둔 Stage 3 동결을 **오너 결정으로 해제**하고 전면 순수화 진행. 도메인=순수 POJO, JPA는 `infrastructure/persistence/`(Entity+Mapper+JpaRepository+RepositoryAdapter)에 격리.
+## 1. 마지막 갱신
 
-- **래칫 해소: course 177→0, notification 38→0, common 54→5.** 잔여 5줄은 `DomainEventExceptionCode`의 HttpStatus 참조 — 프로젝트 전반 컨벤션이라 의도적 잔존.
-- Phase A(교차참조 객체→ID) → Phase B(Member·Schedule JOINED 계층, 수강등록 3종, FailedNotification, FcmToken) → common(`common.domain`→`common.persistence` 개명, 이벤트 인프라 `common.outbox` 분리, DomainEvent 3분리).
-- **순수화가 드러낸 결함 2건 수정**: ① `created_date` 유실(`7f7eafc`) — 순수 도메인엔 감사 필드가 없어 매퍼가 만든 새 엔티티로 UPDATE하면 null로 덮임 ② **아웃박스 id 전파**(`df1c77a`) — 분리 후 매퍼가 만든 *다른 인스턴스*에 id가 담기므로 전파 안 하면 발행 후 save()가 INSERT가 되어 중복 배달. `EventRecorder.assignId` + `EventRecorderTest`가 가드.
-- **별건 결함**: bcrypt 전환(`f6ae465`, 무염 SHA-256→bcrypt, 점진 마이그레이션이라 기존 사용자 무중단) · SSE 하트비트 누수(`ea35036`) · notification↔fcm 순환 제거(`bf23bcc`).
-- **CI 구멍 수정(`971cb2f`)**: `buildAll`이 `:common:test`를 빠뜨려 **ArchUnit 래칫이 CI에서 한 번도 안 돌고 있었다**. 즉 순수화가 되돌아가도 CI는 초록. `:common:build` 추가로 해소 — CI 로그에 `> Task :common:test` 최초 확인.
-- 검증: 로컬 118 테스트 green, PR CI green(8m6s, headSha=971cb2f). **스키마 변경 없음**(discriminator·컬럼 전부 보존).
+2026-10-20 (KST). 기준 커밋: develop `9d77af8`, main `e53fa71`.
 
-## -2. 🏗️ 모듈러 모놀리스 진행 (ADR-0003) — Stage 0·1·2 완료
-- **Stage 0**(`1668e41`): Flyway baseline(prod), 관용 파서(memberId↔sub), git hooks(pre-push=buildAll).
-- **Stage 1**(PR #21): 빌드·CI 단일화 — buildSrc 컨벤션 3종 + `libs.versions.toml` + `.kts` + `includeBuild("geekchat")`+`buildAll` + CI 1잡. 루트 Gradle **8.14.5**.
-- **Stage 2**(PR #22, `92464a3`): **course+notification → 단일 JVM `:app`** (2 프로세스=app+geekchat). course/notification=라이브러리, 통합 main `SsaApplication`. Kafka 자기소비 유지. **단일 `ssa` 스키마**(공유 인프라 테이블 단일 카피, 프리픽스 없음 — 사용자 결정). /internal HTTP→`InProcessEnrolledStudentsAdapter`(:app). 검증: 통합 컨텍스트 테스트 + 로컬 Postgres prod 부팅(Flyway V1·18테이블·Kafka 배선). 아키텍처 리뷰 위반 0.
-- 통합 빌드: `./gradlew buildAll` = `:app`(course+notification) + geekchat(:app). 배포 이미지 = ssa-app + ssa-geekchat(2종).
-- **다음 = Stage 3**(SSA Boot 3.4→4.1 정렬). 이후 Stage 4(geekchat 흡수=단일 JVM 완성) → Stage 5(account 통합=member+user).
-- 후속 개선(비블로커): Flyway 정착 후 ddl-auto→validate, `app.integration` ArchUnit 가드, Kafka KRaft 전환(zookeeper 제거, −512m).
+## 2. 프로젝트 한 줄 요약
 
-## ⚠️ Stage 2 배포 전 수동 준비 (다음 배포 시 필수)
-1. Supabase: `CREATE SCHEMA IF NOT EXISTS ssa;` (기존 ssa_course/ssa_notification은 폐기 — pre-Flyway 테스트 데이터)
-2. 서버 `/opt/ssa/.env`: `COURSE_DB_*`/`NOTIFICATION_DB_*` → **단일 `SSA_DB_URL`/`SSA_DB_USER`/`SSA_DB_PASSWORD`** (currentSchema=ssa). deploy/.env.example 참고.
-3. 이미지가 ssa-course/ssa-notification(2) → **ssa-app(1)**로 바뀜. compose는 app 서비스 하나. 첫 배포 시 구 course/notification 컨테이너는 `--remove-orphans`로 정리됨.
-4. GEEKCHAT_DDL_AUTO=validate 유지(변경 없음).
+과외, 강의 수강신청 스케줄 앱 백엔드다. Spring Boot 4.1 / Java 21 모듈러 모놀리스(`app` 단일 JVM = course + notification)와 별도 Kotlin 앱 `geekchat`으로 이뤄진다. 운영 DB는 Supabase PostgreSQL(스키마 `ssa`, `geekchat`)이고, 배포는 main 푸시 → GHCR → WireGuard → SSH compose다. 에이전트 지침의 정본은 [AGENTS.md](AGENTS.md)다.
 
-## -1. 🚀 운영 배포 LIVE (2026-07-11, main `2c6a7b0`)
-- **3 프로세스 전부 가동·검증 완료**: course(actuator UP)·notification(FCM 200)·geekchat(healthy) + nginx/kafka/redis/zookeeper. Supabase 테이블 15/5/7 생성.
-- 배포 경로: main push → Deploy 워크플로(이미지 3종→GHCR) → WG 터널 → SSH → compose. **주의: CI가 노트북과 같은 WG 피어 키 사용 — 배포 중 노트북 터널 Deactivate 필수** (가드가 90초 내 감지·실패, `gh run rerun <id> --failed`로 재시도).
-- 트러블슈팅 이력(재발 방지): ① JWT_SECRET은 **base64url**(`openssl rand -base64 64 | tr '+/' '-_'`) ② RedissonConfig password 반영 픽스(f8f5bc8) ③ FCM 키 파일은 컨테이너 유저가 읽도록 644 ④ GHCR pull은 CI GITHUB_TOKEN만 가능(gh CLI 토큰은 read:packages 없음) ⑤ Supabase는 **aws-1** 세션 풀러.
-- 서버 상태 파일: `/opt/ssa/.env`(GEEKCHAT_DDL_AUTO=validate 전환됨), `/opt/ssa/secrets/fcm-service-account.json`.
-- 남은 개선: CI 전용 WG 피어 발급(DokaDev) 또는 서버측 pull 기반 자동 배포(read:packages PAT) — 터널 토글 불필요화.
+## 3. 직전 세션들에서 한 일 (2026-10-02 릴리스 이후)
 
-## 0. 최신: GeekChat 모노레포 + Supabase PG + 자동 배포 (PR #17)
-- **GeekChat 편입**: geek-chat/server-v2 → `geekchat/` (subtree, 히스토리 보존). 한 레포 · 두 Gradle 빌드(Kotlin/Boot4 vs Java/Boot3.4). `common` 모듈명 충돌은 빌드 분리로 회피.
-- **DB**: MySQL 컨테이너 제거 → **Supabase PostgreSQL 단일 외부 DB**, 스키마 격리(`ssa_course`/`ssa_notification`/`geekchat`). course prod PG 기동·DDL·네이티브 쿼리 로컬 PG16 검증 완료. ⚠ Supabase 접속은 **세션 풀러 호스트**(aws-0-ap-northeast-2.pooler.supabase.com:5432, user=postgres.&lt;ref&gt;) 사용 — direct 호스트는 IPv6 전용.
-- **CD**: `deploy.yml`이 **main push에 자동 트리거** (develop→main PR 병합 = 배포). 이미지 3종(ssa-course/-notification/-geekchat) → GHCR → GH Actions가 WireGuard 터널로 서버 SSH 배포. nginx가 `/chat/`(REST)·`/chat/ws`(WebSocket)를 geekchat(context-path=/chat)로 라우팅.
-- **배포 전 수동 준비 (1회)**: ① Supabase SQL Editor에서 스키마 3개 CREATE ② 서버 `/opt/ssa/.env`를 `deploy/.env.example` 기준으로 갱신(시크릿 전부 신규 발급 — 채팅에 노출된 Supabase 비밀번호·WG 키는 로테이션) ③ GitHub Secrets(WG_* 6 + DEPLOY_* 4) 등록 ④ 첫 배포만 `GEEKCHAT_DDL_AUTO=update` → validate 복귀 ⑤ 서버 SSH 접근 확인(shjung@10.64.212.20, WG 터널 경유).
-- 잔여: notification PG 기동 스모크(FCM 키 필요), 서버 MySQL 기존 데이터 이관(범위 외, 빈 DB 시작), geekchat OAuth 콜백 URL 실도메인 반영.
+- ✅ [#83](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/83) `7882b2c` app 테스트 결과를 테스트 이름별로 CI 로그에 출력
+- ✅ [#84](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/84) `1c1fbb7` Stop 훅을 memguard로 감쌌다. 메모리 예산을 1분 기다려도 못 받으면 건너뛰고, 건너뜀과 실패를 구분해 보인다. 본체는 [.claude/hooks/stop-tests.sh](.claude/hooks/stop-tests.sh)
+- ✅ [#85](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/85) `4686234` 터널 출시 경로의 연결 지점 검증과 계획([docs/superpowers/plans/2026-10-04-tunnel-launch-seams.md](docs/superpowers/plans/2026-10-04-tunnel-launch-seams.md)). 계획만 있고 구현은 오너 승인 대기
+- ✅ [#86](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/86) `dda418c` 밀려난 SSE 커넥션의 정리가 같은 회원의 새 커넥션을 지우지 않게 했다. 테스트 5개: [SseSupersededConnectionTest](notification/src/test/java/com/example/simplescheduleapp/sse/presentation/SseSupersededConnectionTest.java)
+- ✅ [#87](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/87) `dacf3da` `SseController` 설명 정정(웹도 `EventSourcePolyfill`로 SSE를 쓴다)
+- ✅ [#89](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/89) `9d77af8` 새 운영 서버 기준 배포 런북. FCM 키 권한을 600에서 644로 바로잡았다(§7)
+- 🔶 [#88](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/88) SSE 회원당 다중 연결 구현 계획. open, 오너 승인 대기. 브랜치 `docs/sse-multi-connection-plan`
+- 🔶 [#90](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/90) 릴리스 PR(develop → main). open, CI 통과(7m35s, 8m3s). **머지 보류**: 새 서버 준비를 오너가 확인한 뒤 머지한다(2026-10-19 오너 결정)
+- 운영 사건: 2026-10-18 운영 서버가 교체됐다. 옛 `10.64.212.20`은 내려갔고 `.env`, FCM 키, 볼륨이 남지 않았다. 새 서버 `10.64.212.40`(`agent-worker`, Rocky Linux 10.2)은 관리자의 에이전트 작업과 같은 VM을 쓰는 공유 호스트이고, 2026-10-19 기준 아무것도 배포되지 않았다. 그래서 운영 서비스는 지금 멈춰 있다
+- 그 전 이력 요약: 2026-08-02 단일 JVM 대점프 릴리스(Boot 4.1, ADR-0004, ADR-0005, Flyway 최초 실행). 2026-10-02 릴리스 [#82](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/82)(account P1, 운영 `ddl-auto: validate`, Kafka 재시도 수정, 의존성 업그레이드)가 옛 서버의 마지막 성공 배포다(`e53fa71`)
 
-## 1. 지금 상태 한 줄 요약 (develop 기준)
-원격 29개 브랜치 전수 조사 → **유효 작업 전부 develop에 통합 완료**. develop = `a2dd683`, 3모듈 clean 빌드·테스트 green, CI green. PR #17(모노레포+PG+CD)이 develop 대기 중.
+## 4. 현재 git 상태
 
-## 2. 이번 세션 통합 내역 (2026-07-10)
-### 1차: 열린 PR 3개 병합
-- **PR #15** input-validation (`dd076a2`) · **PR #14** observability+4단계 동시성 방어 (`337bc82`, main→develop 재타깃, 충돌 3건 해소) · **PR #13** 헥사고날 기반 (`031751c`) · 래칫 확장 `Schedule.version` 2건(151→153, `bc87f98`)
+| 위치 | 브랜치 | HEAD | 메모 |
+|---|---|---|---|
+| `origin/main` | main | `e53fa71` | 마지막 성공 배포(2026-10-02, 옛 서버) |
+| `origin/develop` | develop | `9d77af8` | main보다 6커밋 앞(#83~#87, #89). 실행 중인 앱에 닿는 변경은 #86 하나이고, DB 마이그레이션과 `deploy/` 번들은 바뀌지 않았다 |
+| `simple-schedule-app-be/ssa/` (주 체크아웃) | main | `e53fa71` | `.claude/settings.json`(수정)과 `.claude/hooks/`(추적 안 됨)는 #84 훅을 미리 덮어쓴 것이다. #90이 main에 들어간 뒤 당기기 전에 `git restore .claude/settings.json && rm .claude/hooks/stop-tests.sh`로 걷어 낸다. `.omc/` 변경은 도구 상태라 커밋하지 않는다 |
+| `simple-schedule-app-be/.wt-ssa-analysis/` (worktree) | 작업 브랜치 | | 작업은 여기서 한다 |
 
-### 2차: 잔여 작업 브랜치 5종 적응 통합 (**PR #16**, `73e6c6e`)
-병렬 분석 에이전트 7개가 실코드 기준으로 판정 후 순차 통합. 유닛별 전체 빌드 green 확인 후 커밋.
-- `ab4fdb2` **Outbox Relay** (stage/1-2): 적응 — produce() @Transactional 제거(실패 상태 롤백 결함), retryCount 선영속(DEAD 도달 보장), @Column 미사용(래칫 위반 0)
-- `82edda6` **스케줄 충돌 감지** (stage/2-1): 적응 — ScheduleRepository 3분할, ScheduleConflictValidator 순수 자바 + `config.ScheduleConfig` @Bean. 신규 409 SC0/SC1
-- `fc9debb` **낙관적 락 재시도** (stage/1-3): 적응 — Lecture.@Version 드롭(Schedule 루트와 중복 → Hibernate 기동 실패 방지), @Retryable 3개 경로 유지
-- `2363aa9` **Redis Lua 원자화** (feature/1-5): obs AtomicCounter 구조로 재구현 — 키부재(-2)/소진(-1) 구분, INCR-back 제거, TTL=종료+1일(과거면 30일). 신규 404 SL002
-- `c3fb8e3` **인증 Phase 3a** (feature/1-1): 원안 3b 하드컷을 계약 게이트에 맞춰 **듀얼리드로 각색** — @RequireRole+RoleInterceptor(무토큰 통과, 불일치 403 T6), AuthIdentities(토큰 우선, 둘 다 없으면 401 T7), accept/reject 소유권 검증(토큰 제시 시만)
+## 5. 다음 작업 우선순위
 
-### 스킵 (사유 확정)
-- `feature/sse` fix: develop에서 이관+소프트삭제로 해소 — 적용 시 재신청 차단 회귀
-- `stage/1-4`: PR #15와 패치 동일(git cherry "-")
-- `test/select-lock-deadlock`: 프로덕션 코드 160줄 삭제하는 실험 스냅샷
+1. **새 서버 준비 → #90 머지(운영 배포).** 오너와 관리자가 한다. 순서:
+   1. 관리자에게 계정을 요청한다.
+   2. [deploy/README.md](deploy/README.md) §1을 따른다: Docker CE, `/opt/ssa`, `.env`(600), FCM 키(644), SELinux.
+   3. §2에서 시크릿 4개를 갱신한다(`DEPLOY_SSH_KEY`는 새로 발급).
+   4. 노트북에서 접속 점검을 한 뒤 WireGuard를 끈다.
+   5. 오너 확인을 받고 #90을 머지한다.
+2. **첫 배포 전 특강 정원 키 확인.** 새 서버의 Redis는 비어 있고, 정원 키를 자동으로 다시 채우는 경로가 없다. 진행 중인 특강이 DB에 있으면 그 신청은 `SPECIAL_LECTURE_CAPACITY_UNAVAILABLE`로 실패하고 ERROR 로그가 남는다([SpecialLectureRedisClient.java](course/src/main/java/com/example/simplescheduleapp/lecture/special/application/SpecialLectureRedisClient.java)의 `resolveMissingKeyCause`). 아래 쿼리는 시간대 차이를 덮으려고 하루 여유를 둔 넉넉한 목록이다.
+   ```sql
+   SELECT sl.schedule_id, sl.capacity, s.end_time
+   FROM ssa.special_lecture sl
+   JOIN ssa.schedule s ON s.schedule_id = sl.schedule_id
+   WHERE s.deleted_date IS NULL AND s.end_time > now() - interval '1 day';
+   ```
+   행이 있으면 남은 정원(정원에서 신청 수를 뺀 값)으로 정원 키와 마감 키를 다시 넣어야 한다. 그 절차와 도구는 아직 없다(확인 필요).
+3. **오너 결정 대기:**
+   - 공유 호스트에서 CI 키에 docker 그룹(사실상 root 권한)을 줄지, 관리자와 정한다.
+   - 시크릿 재발급 범위. 전부 재발급을 권한다.
+   - #88 다중 연결 계획의 승인과 실행 방식.
+   - 터널 ① realip 구현 승인.
+4. **남은 부채:**
+   - 시크릿 로테이션.
+   - bcrypt 재해싱 검증. 오너가 기존 계정으로 한 번 로그인해야 한다.
+   - `/me/schedules` 네이티브 SQL은 H2에서만 검증했다.
+   - `FcmService`의 `application → infrastructure` 위반 5건 동결.
+   - 3b-full. 쿼리 파라미터를 없애려면 클라이언트를 동시에 릴리스해야 한다.
+5. **`.planning/codebase/` 재분석 때 반영할 것.** 이 문서들은 스냅샷이라 직접 고치지 않는다.
+   - CONCERNS의 SSE 하트비트 항목: 이미 해결됐다.
+   - CONCERNS의 SSE 덮어쓰기 항목: 정리 결함은 #86에서 해결했고, 다중 연결은 #88에서 다룬다.
+   - 운영 서버 사양: CONCERNS 148줄과 STACK 115줄이 옛 서버 기준이다.
 
-## 3. 검증 상태
-- 로컬: `./gradlew clean :common:build :course:build :notification:build` → BUILD SUCCESSFUL (develop `73e6c6e`, 31 tasks)
-- CI: PR #16 pass(2m51s) · develop push CI 감시 중(문서 커밋 포함 재확인 예정)
-- 테스트 신규 20건: relay 3 · 충돌검증 3 · 재시도계약 1 · RedisClient 8(기존 5 갱신 — 사용자 승인) · RoleInterceptor 5 · AuthIdentities 3 · 소유권 1 (기존 accept/reject 2건 시그니처 갱신 — 사용자 승인)
-- ArchUnit 래칫: course 153 유지, 신규 위반 0 (2-1의 신규 리포지토리는 3분할로 무위반 통합)
+## 6. 컨텍스트 빠른 복원
 
-## 4. 계약 변경 (API-CONTRACT.md 반영 완료 — FE/오케스트레이터 공지 필요)
-전부 additive (기존 클라이언트 무영향):
-- 식별자 파라미터(tutorId/studentId/memberId) optional화 — `Authorization: Bearer` 시 토큰이 우선
-- 403 T6 (토큰 제시+role 불일치) · 401 T7 (식별자 전무) · 400 L2 (소유권 위반, 기존 코드 신규 표면) · 409 SC0/SC1 (스케줄 충돌) · 404 SL002 (Redis 정원 키 부재)
-- SSE는 경로 변수 폴백 유지 (EventSource 헤더 제약 — 3b 전 SSE 토큰 전송 방식 결정 필요)
-
-## 5. 다음 할 일 (우선순위)
-1. **인증 Phase 3b** (오케스트레이터 게이트): Android Phase 2 완료 후 — @Auth required 전환, 레거시 파라미터 제거, RoleInterceptor 무토큰 401. 코드에 `Phase 3a`/`3b에서 전환` 주석으로 전환 지점 전부 표시됨.
-2. ~~Stage 2 나머지~~ / ~~Stage 3 도메인 JPA 제거~~ → **ADR-0004로 완료**(위 -3절). `DomainEventRepository`도 포트+어댑터로 분리됨(`c342c8d`).
-3. **ADR-0003 Stage 4**: geekchat 흡수(단일 JVM 완성) → Stage 5(account 통합=member+user).
-4. **운영 후속**: outbox DEAD 이벤트 메트릭/알림, domain_event.status 인덱스, 멀티 인스턴스 시 relay 중복 실행 가드(ShedLock), Redis 정원 키 백필 절차(SL002 대량 발생 대비), @Retryable 소진 시 409 매핑(@Recover).
-5. **브랜치 청소** (승인 필요): 통합 완료된 원격 브랜치 삭제 — feature/1-1~1-5, 2-1, 2-4, stage/*, 병합된 PR 브랜치들.
-
-## 6. 주의/함정
-- ArchUnit freeze 갱신은 같은 커밋에 · common 테스트 DoNotIncludeJars 금지 · PR 재타깃만으론 CI 안 돎(close/reopen)
-- **래칫을 새 모듈에 붙이면 `./gradlew buildAll --dry-run | grep :<모듈>:test`로 CI 포함 여부 확인 필수** — 규칙이 작동해도 CI에서 안 돌면 무의미하다(2026-07-17 common이 정확히 이 상태였음, `971cb2f`)
-- **순수 도메인 ↔ 엔티티 매핑 시 id·감사필드 전파 확인** — 매퍼가 만드는 건 *다른 인스턴스*다. id 미전파=INSERT 중복, createdDate 미전파=null 덮어쓰기. 새 애그리거트 순수화 시 왕복 테스트 필수
-- `ci.yml`의 `pull_request: branches:`는 **base 기준 필터** — base가 목록 밖이면 CI가 아예 안 돈다(PR #24가 `integration/*` base라 24개 커밋 동안 CI 0회)
-- 낙관적 락 @Version은 **Schedule 루트에만** — 자식 엔티티에 추가하면 Hibernate 기동 실패
-- KafkaEventProducer.produce()에 @Transactional 금지 — 실패 상태 저장이 롤백됨
-- Redis 정원 키 완전 소실(플러시) 시 특강 신청 전부 404 SL002 — 재적재 절차 필요
-- 보안: 시크릿 로테이션(JWT/DB/WireGuard/SSH/FCM) 여전히 미완 — `docs/SECURITY.md`
-- NotificationIntegrationTest 1건 @Disabled · slow 태그는 `-PincludeSlow`
-
-## 7. 검증 명령
-```
+```bash
 cd simple-schedule-app-be/.wt-ssa-analysis
-./gradlew buildAll                                          # CI와 동일한 단일 엔트리포인트
-wc -l */src/test/archunit-violations/*                      # 래칫 진행도 (course 0 / notification 0 / common 5)
-./gradlew buildAll --dry-run | grep ":.*:test"              # CI가 실제로 도는 test 태스크 확인
+git fetch origin && git log --oneline origin/main..origin/develop   # 다음 릴리스에 들어갈 것
+gh pr list --state open
+gh run list --workflow deploy.yml --limit 3                         # 운영에 실제로 나간 것은 마지막 success
+memguard -- ./gradlew --max-workers=2 buildAll                      # CI와 같은 검증. Gradle은 직접 감싼다
 ```
-로컬 인프라: `docker compose up -d` (MySQL 3306/3307, Redis 6379, Kafka 9092).
 
-## 8. 문서 지도
-- `docs/adr/0001` 멀티모듈 · `docs/adr/0002` 헥사고날 로드맵 · `docs/architecture/hexagonal-guidelines.md`
-- `docs/SECURITY.md` 보안 · `.planning/codebase/` 분석 7종 · 루트/모듈 `AGENTS.md`
-- `orchestration/API-CONTRACT.md` 클라이언트 계약 단일 기준 (2026-07-10 Phase 3a 갱신됨)
+| 문서 | 볼 때 |
+|---|---|
+| [AGENTS.md](AGENTS.md), 모듈별 `AGENTS.md` | 작업 전 항상 |
+| [deploy/README.md](deploy/README.md) | 서버 준비, 배포, 운영 확인 |
+| [docs/adr/](docs/adr/) (0001~0006) | 구조 결정의 근거 |
+| [docs/superpowers/plans/](docs/superpowers/plans/) | 진행 중인 계획 |
+| [docs/SECURITY.md](docs/SECURITY.md) | 시크릿과 보안 조치 |
+
+## 7. 알아두어야 할 함정
+
+**배포와 운영**
+- develop → main 머지는 곧 운영 배포다. `deploy.yml`의 paths-ignore는 `**.md`, `docs/**`, `.planning/**`뿐이다. 오너 확인 뒤에만 머지하고, 릴리스는 merge commit으로 한다(#82와 같은 방식).
+- 배포 중에는 노트북 WireGuard 터널을 끈다. CI가 같은 피어 키를 쓴다. 실패하면 `gh run rerun <id> --failed`로 다시 돌린다.
+- CI 접속 단계의 실패 메시지는 "피어 키 충돌"만 안내한다. 새 서버에서는 키, 계정, `authorized_keys`, 호스트 키 고정이 틀려도 같은 메시지가 나온다. 런북 §2의 3에 있는 노트북 점검으로 먼저 가린다.
+- main 끝이 곧 배포된 것은 아니다. 배포가 실패해도 main은 앞으로 간다. 롤백 기준은 `gh run list --workflow deploy.yml`의 마지막 success다.
+- nginx는 `up -d`로 갱신되지 않는다. CD가 `docker restart ssa-nginx`를 하고(reload가 아니라 restart여야 upstream DNS를 다시 푼다), 스모크는 401이어야 통과다.
+- FCM 키는 644여야 한다. 앱 컨테이너 사용자 `spring`이 읽어야 하므로, 600이면 `FcmConfig`가 기동을 멈춘다. 키는 `secrets` 디렉터리의 700 권한이 지킨다.
+- 원격 명령의 URL은 따옴표로 감싼다. 옛 서버 셸 zsh가 `?`를 글로브로 먹어 2026-08-13 스모크가 거짓으로 실패했다. 새 서버의 셸은 확인 필요.
+- `JWT_SECRET`은 base64url이어야 한다. GHCR pull은 CI의 `GITHUB_TOKEN`으로만 된다(gh CLI 토큰엔 `read:packages`가 없다). Supabase는 세션 풀러 호스트로 붙는다(direct 호스트는 IPv6 전용).
+
+**빌드와 테스트**
+- Gradle은 memguard 자동 감싸기 대상이 아니다. 직접 `memguard -- ./gradlew --max-workers=2 <태스크>`로 돌린다.
+- `ScheduleOverlapQuery*Test`는 Testcontainers라 Docker가 필요하다(없으면 실패). SSA 컨텍스트 기동에는 Redis가 필요하다.
+- 네이티브 SQL은 H2만으로 검증하지 않는다(운영 PostgreSQL, 로컬 MySQL).
+- ArchUnit freeze 갱신은 같은 커밋에 한다. 새 모듈에 래칫을 붙이면 `./gradlew buildAll --dry-run | grep ":.*:test"`로 CI에 포함되는지 확인한다(2026-07-17 `common`이 CI에서 돌지 않았다).
+- `ci.yml`의 `pull_request: branches:`는 base 기준 필터다. base가 main이나 develop이 아니면 CI가 돌지 않고, PR 재타깃만으로는 다시 돌지 않는다(close 후 reopen).
+- 테스트는 스펙이다. 테스트 수정은 오너 승인을 받는다. 지금 `@Disabled`는 `RequiresNewDeadLockOccurTest` 하나다.
+
+**코드**
+- 순수 도메인과 엔티티를 매핑할 때 id와 감사 필드를 전파한다. 매퍼가 만드는 것은 다른 인스턴스라, 빠뜨리면 INSERT가 중복되거나 `createdDate`가 null로 덮인다.
+- 낙관적 락 `@Version`은 Schedule 루트에만 둔다. 자식 엔티티에 두면 Hibernate가 기동하지 못한다.
+- `KafkaEventProducer.produce()`에 `@Transactional`을 붙이지 않는다. 실패 상태 저장이 롤백된다.
+- SSE: `open-in-view: false`를 유지한다. 경로 계약을 바꾸면 [deploy/nginx/conf.d/ssa.conf](deploy/nginx/conf.d/ssa.conf)도 고친다(2026-08-02 SSE 301).
+- SSE는 지금 회원당 커넥션 하나다. 같은 계정의 두 클라이언트(탭 둘, 웹과 Android)는 번갈아 끊긴다. #86 뒤로는 이것이 정상 동작이고, 해결은 #88에서 한다.
+
+## 8. 다음 세션에서 할 첫 액션
+
+| 하려는 일 | 첫 행동 |
+|---|---|
+| 서버 준비가 끝나 배포 | 오너 확인 → §5의 2 쿼리로 진행 중 특강 확인 → WireGuard 끄기 → `gh pr merge 90 --merge` → Deploy 실행 결과와 스모크 401 확인 → [deploy/README.md](deploy/README.md) §1의 "확인" 절 |
+| #88 승인됨 | 브랜치 `docs/sse-multi-connection-plan`의 `docs/superpowers/plans/2026-10-15-sse-multi-connection.md`를 읽고 Task 1부터 |
+| 터널 ① 구현 승인됨 | [docs/superpowers/plans/2026-10-04-tunnel-launch-seams.md](docs/superpowers/plans/2026-10-04-tunnel-launch-seams.md)의 ① |
+| 특강 정원 키 재적재 도구 | `SpecialLectureRedisClient.initializeSpecialLecture`와 신청 수 집계를 묶는 일회성 절차부터 설계 |
+| 부채 정리 | §5의 4 목록에서 하나를 골라 계획부터 |
+| 운영 장애 조사 | `gh run list --workflow deploy.yml` → 서버에서 `docker logs ssa-app --tail 200` |

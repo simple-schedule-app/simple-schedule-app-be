@@ -1,7 +1,9 @@
 # ── Build stage ──────────────────────────────────────────────────────────────
 # Multi-module Gradle build (build-logic composite + feature modules). Only :app is bootable and
 # bundles the module jars as nested jars in its bootJar.
-FROM eclipse-temurin:21-jdk-alpine AS builder
+# Pinned to $BUILDPLATFORM: the jar is architecture-independent, so a multi-arch build (amd64 + arm64)
+# runs Gradle natively once instead of under QEMU emulation. Only the runtime stage follows the target.
+FROM --platform=$BUILDPLATFORM eclipse-temurin:21-jdk-alpine AS builder
 
 WORKDIR /build
 

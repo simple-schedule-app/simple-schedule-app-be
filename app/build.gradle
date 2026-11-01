@@ -26,3 +26,11 @@ dependencies {
     testRuntimeOnly 'org.flywaydb:flyway-database-postgresql'
     testRuntimeOnly 'org.postgresql:postgresql'
 }
+
+// 컨테이너 테스트(SchemaBaselineValidationTest, AccountMigrationTest)가 실제로 실행됐는지 CI 로그에서
+// 테스트 이름별로 확인한다. 없으면 :app:test 태스크 줄만 남아 통과 여부를 추정할 수밖에 없다.
+tasks.named('test') {
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+    }
+}
