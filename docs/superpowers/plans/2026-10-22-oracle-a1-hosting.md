@@ -101,7 +101,7 @@ Oracle 튜토리얼의 iptables 단계는 호스트에서 직접 듣는 프로�
 - 이미지 태그 규칙(`<sha>`, `latest`)과 deploy 잡의 compose 명령은 바꾸지 않는다.
 - 액션 메이저 버전: `docker/setup-qemu-action@v4`, `docker/setup-buildx-action@v4`(둘 다 2026-09 최신 v4.4.x), `docker/build-push-action@v7`, `docker/login-action@v4`.
 - 빌드 플랫폼: `linux/amd64,linux/arm64`.
-- `DEPLOY_NETWORK`의 값은 소문자 `direct` 하나다. 다른 값은 모두 WireGuard로 본다.
+- `DEPLOY_NETWORK`의 값은 소문자 `direct` 하나로 적는다. 비교는 대소문자를 가리지 않아 `Direct`, `DIRECT`도 `direct`와 같고, 그 밖의 값은 모두 WireGuard로 본다(2026-11-02 정정, Review Focus 3번).
 - 서버의 인바운드 80과 443을 열지 않는다.
 - 시크릿 값은 문서, 로그, 커밋에 남기지 않는다. 변수와 시크릿의 이름만 적는다.
 - develop → main 머지(운영 배포)는 오너 확인 뒤에만 한다.
@@ -110,7 +110,7 @@ Oracle 튜토리얼의 iptables 단계는 호스트에서 직접 듣는 프로�
 
 1. **arm64 서버가 amd64 전용 이미지를 받는다.** 컨테이너가 `exec format error`로 뜨지 않는다. Task 1의 매니페스트 확인 단계와 Task 5의 순서로 막는다.
 2. **보안 목록에서 80을 연다.** 평문 HTTP가 공개된다. Task 3에 외부에서 80 접속이 실패하는지 보는 확인을 둔다.
-3. **`DEPLOY_NETWORK` 오타(`Direct`, `DIRECT`).** WireGuard 경로로 가서 WG 단계에서 실패한다. 실패가 시끄럽게 드러나는 쪽이라 받아들이고, Task 2의 머리 주석에 정확한 값을 적는다.
+3. **`DEPLOY_NETWORK` 오타(`drect` 등).** WireGuard 경로로 가서 `WG_*` 시크릿이 없으면 WG 단계에서 실패한다. 실패가 시끄럽게 드러나는 쪽이라 받아들이고, Task 2의 머리 주석에 정확한 값(소문자 `direct`)을 적는다. 대소문자만 다른 `Direct`, `DIRECT`는 오타가 아니다. 단계 `if` 표현식이 문자열을 대소문자 구분 없이 비교해 `direct`와 같게 보기 때문이고(GitHub Docs "Evaluate expressions in workflows and actions"의 Operators), `Verify SSH connectivity`의 실패 안내도 이 규칙에 맞췄다(2026-11-02 정정. 처음에는 이 둘도 WireGuard로 간다고 적었다).
 4. **유휴 회수.** 7일 기준이라 첫 주에 드러난다. Task 4의 측정과 콘솔 지표를 일주일 본다.
 5. **arm64에서 전이 의존성의 네이티브 라이브러리**(Netty epoll, gRPC 등)가 없거나 다르다. 대개 순수 Java로 물러나지만 확인 전이다. Task 3의 첫 배포 확인에 로그 검사를 둔다.
 
