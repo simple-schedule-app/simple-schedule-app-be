@@ -274,6 +274,8 @@ curl -s -o /dev/null -w '%{http_code}\n' http://localhost/lectures/search?keywor
 ALTER TABLE ssa.consultation_attendee RENAME COLUMN consultation_id TO consultaition_id;
 ```
 
+롤백은 서버에서 손으로 한다. **Deploy 워크플로를 재실행하지 않는다.** CD의 `Verify deployed image identity` 단계는 떠 있는 `ssa-app`의 이미지 태그가 그 실행의 커밋 SHA와 같은지를 보므로, 되돌린 뒤에 옛 실행을 다시 돌리면 그 단계에서 실패한다. 그 실패는 롤백이 됐다는 뜻이지 장애가 아니다. 되돌린 상태의 확인은 §6의 손검증으로 한다.
+
 **arm64 서버(Oracle)에서 롤백할 때**는 되돌릴 SHA에 arm64 이미지가 있는지 먼저 본다. 다중 아키텍처 빌드가 들어간 뒤의 SHA만 해당한다. 그 전 SHA는 amd64 전용이라 컨테이너가 `exec format error`로 뜨지 않고, `restart: always` 아래에서 재시작만 반복한다. 그 SHA의 Deploy 실행 로그에 `Check image platforms` 단계가 있고 통과했는지로 가린다(그 전 실행에는 이 단계가 없다). Oracle 첫 배포에는 되돌릴 SHA가 없다. 조직 이전(2026-10-23) 전 SHA의 이미지는 `ghcr.io/jungsehui`에 있으므로, VM에서 그 SHA로 되돌리려면 `.env`의 `GHCR_OWNER`도 잠시 바꿔야 한다.
 
 ## 6. 운영 점검

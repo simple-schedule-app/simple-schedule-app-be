@@ -224,6 +224,26 @@ jobs:
              docker compose -f docker-compose.prod.yml --env-file .env exec -T nginx nginx -t && \
              docker restart ssa-nginx"
 
+      # 아래 스모크의 401은 "nginx가 백엔드에 닿는다"까지만 증명한다. 배포가 실패해 옛 컨테이너가
+      # 그대로 떠 있어도 401은 나온다(2026-09-04, 09-12 릴리스에서 손으로 확인). 그래서 먼저
+      # "지금 도는 컨테이너가 이번 커밋의 이미지인가"를 대조한다. CD가 이미지를 github.sha로
+      # 태깅하므로 컨테이너의 이미지 태그를 읽어 비교하면 되고, 앱 코드나 노출 엔드포인트는 필요 없다.
+      # (docs/superpowers/plans/2026-09-05-cd-smoke-identity-check.md)
+      # 빈 문자열끼리의 비교는 참이 되므로, inspect 실패와 빈 태그를 먼저 실패로 돌린다. 명령이
+      # 실패했을 때 통과하는 검사는 없는 것보다 나쁘다.
+      # 수동 롤백 뒤에는 이 단계가 반드시 실패한다. 롤백 절차에서는 Deploy를 재실행하지 않는다(런북 §5 롤백).
+      - name: Verify deployed image identity (배포된 것이 이번 커밋인지)
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            'set -e
+             expected="${{ github.sha }}"
+             if [ -z "$expected" ]; then echo "::error::기대 SHA가 비어 있다"; exit 1; fi
+             image=$(docker inspect --format "{{.Config.Image}}" ssa-app) || { echo "::error::ssa-app 컨테이너를 찾을 수 없다 (inspect 실패)"; exit 1; }
+             running="${image##*:}"
+             if [ -z "$running" ] || [ "$running" = "$image" ]; then echo "::error::이미지 태그를 읽지 못했다: image=$image"; exit 1; fi
+             if [ "$running" != "$expected" ]; then echo "::error::배포된 이미지가 이번 커밋이 아니다. running=$running expected=$expected"; exit 1; fi
+             echo "identity OK ($image)"'
+
       # 배포가 실제로 살아났는지 확인한다. 위 단계까지 성공해도 nginx가 백엔드에 닿지
       # 못하면 전면 502이므로, 여기서 잡지 않으면 초록 배포로 장애가 나간다.
       # URL을 반드시 따옴표로 감쌀 것. 옛 서버(2026-10 교체 전)는 로그인 셸이 zsh였고, zsh는 따옴표 없는 `?`를
