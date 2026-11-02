@@ -1,7 +1,6 @@
 package com.example.simplescheduleapp.sse.application;
 
 import com.example.simplescheduleapp.sse.application.port.out.SseClientPresence;
-import com.example.simplescheduleapp.sse.application.SseEmitterRegistry;
 import com.example.simplescheduleapp.support.UnitTest;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.DisplayName;
@@ -17,7 +16,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
 import java.util.stream.Collectors;
@@ -25,6 +26,9 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -40,7 +44,7 @@ class SseConnectionServiceTest extends UnitTest {
     private TaskScheduler taskScheduler;
 
     @Mock
-    private SseEmitterRegistry sseEmitterRegistry;
+    private SseConnectionRegistry sseConnectionRegistry;
 
     @Mock
     private SseClientPresence sseClientPresence;
@@ -60,6 +64,8 @@ class SseConnectionServiceTest extends UnitTest {
         doReturn(scheduledFuture)
                 .when(taskScheduler)
                 .scheduleAtFixedRate(heartbeatTaskCaptor.capture(), any(Instant.class), any(Duration.class));
+        // 이 연결이 그 회원의 마지막 연결이라고 등록부가 답한다
+        given(sseConnectionRegistry.remove(eq(memberId), any(SseConnection.class))).willReturn(OptionalInt.of(0));
 
         SseEmitter emitter = sseConnectionService.connect(memberId);
 
@@ -76,18 +82,18 @@ class SseConnectionServiceTest extends UnitTest {
         assertThatCode(() -> heartbeatTaskCaptor.getValue().run())
                 .doesNotThrowAnyException();
 
-        // then: 하트비트 스케줄이 취소되고, SSE 자원(레포지토리 엔트리·Redis 구독)이 해제되어야 한다.
+        // then: 하트비트 스케줄이 취소되고, SSE 자원(등록부 엔트리, Redis 구독)이 해제되어야 한다.
         verify(scheduledFuture, times(1)).cancel(false);
-        verify(sseEmitterRegistry, times(1)).delete(memberId);
+        verify(sseConnectionRegistry, times(1)).remove(eq(memberId), any(SseConnection.class));
         verify(sseClientPresence, times(1)).unsubscribeClient(memberId);
         // send()가 이미 완료 상태에서 실패했으므로 refreshConnection까지는 도달하지 않는다.
         verify(sseClientPresence, never()).refreshConnection(memberId);
     }
 
-    @DisplayName("동일 memberId로 재연결하면 이전 커넥션의 하트비트 스케줄을 취소한다")
+    @DisplayName("같은 회원의 두 번째 연결은 첫 연결의 하트비트를 멈추지 않는다")
     @Test
-    void 재연결시_이전_커넥션의_하트비트를_취소한다() {
-        // given: 같은 memberId로 두 번 연결(재연결)한다고 가정하고, 스케줄러가 매번 다른 핸들을 반환하게 한다.
+    void 두_번째_연결은_첫_연결의_하트비트를_멈추지_않는다() {
+        // given: 같은 회원이 두 번 연결한다(탭 둘, 또는 웹과 Android). 스케줄러는 매번 다른 핸들을 반환한다.
         Long memberId = 2L;
         doReturn(scheduledFuture, secondScheduledFuture)
                 .when(taskScheduler)
@@ -97,10 +103,9 @@ class SseConnectionServiceTest extends UnitTest {
         sseConnectionService.connect(memberId);
         sseConnectionService.connect(memberId);
 
-        // then: 두 번째 connect()가 재연결 취소 로직에서 첫 번째 하트비트 핸들을 취소해야 하고,
-        // 새로 등록된(두 번째) 핸들은 아직 취소되면 안 된다.
-        verify(scheduledFuture, times(1)).cancel(false);
-        verify(secondScheduledFuture, never()).cancel(false);
+        // then: 두 연결은 함께 산다. 어느 하트비트도 멈추지 않는다.
+        verify(scheduledFuture, never()).cancel(anyBoolean());
+        verify(secondScheduledFuture, never()).cancel(anyBoolean());
     }
 
     @DisplayName("알림은 event 이름이 'notification'으로 고정되고, 제목·본문은 JSON 데이터로 실린다")
@@ -113,7 +118,7 @@ class SseConnectionServiceTest extends UnitTest {
         String title = "중등 수학 심화";
         String body = "수강신청이 승인되었습니다";
         SseEmitter emitter = mock(SseEmitter.class);
-        doReturn(emitter).when(sseEmitterRegistry).get(memberId);
+        doReturn(List.of(new SseConnection(emitter))).when(sseConnectionRegistry).connectionsOf(memberId);
 
         sseConnectionService.sendSseNotification(memberId, title, body);
 
