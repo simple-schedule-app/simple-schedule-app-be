@@ -58,7 +58,7 @@ public class SseConnectionService {
      * 새 커넥션의 하트비트가 멈추고 알림 대상에서도 빠진다. 클라이언트에는 열린 채 침묵하는 스트림으로
      * 보인다. 2026-10-13 웹에서 관측된 45초 주기 끊김의 후보 경로 중 하나다({@code SseSupersededConnectionTest}).
      */
-    private final Map<Long, Connection> connections = new ConcurrentHashMap<>();
+    private final Map<Long, SseConnection> connections = new ConcurrentHashMap<>();
 
     public void sendSseNotification(Long targetId, String title, String body) {
         SseEmitter emitter = sseEmitterRegistry.get(targetId);
@@ -73,8 +73,8 @@ public class SseConnectionService {
             log.error("targetId: {} 에게 SSE 이벤트 전송 실패: {}", targetId, body);
             // 실패한 emitter가 아직 현재 커넥션의 것일 때만 정리한다. 알림 스레드가 emitter를 꺼낸 뒤
             // 같은 회원이 다시 연결했다면 레지스트리의 칸은 이미 새 커넥션 차지다.
-            Connection current = connections.get(targetId);
-            if (current != null && current.emitter == emitter) {
+            SseConnection current = connections.get(targetId);
+            if (current != null && current.emitter() == emitter) {
                 release(targetId, current);
             }
             throw new ApplicationException(SseExceptionCode.SSE_SEND_FAILED);
@@ -83,7 +83,7 @@ public class SseConnectionService {
 
     public SseEmitter connect(Long memberId) {
         SseEmitter emitter = new SseEmitter(DEFAULT_TIMEOUT);
-        Connection connection = new Connection(emitter);
+        SseConnection connection = new SseConnection(emitter);
 
         // 재연결 시 이전 커넥션의 하트비트를 취소하고 새 커넥션을 등록한다. 취소하지 않으면 emitter만
         // 교체되고 이전 하트비트가 살아남아 커넥션마다 스케줄이 누적된다. 둘을 회원 단위로 원자적으로
@@ -127,7 +127,7 @@ public class SseConnectionService {
      * 커넥션 하나를 정리한다. 자기 하트비트는 언제나 멈추고, 회원 단위 자원(레지스트리 엔트리와 Redis 구독)은
      * 이 커넥션이 아직 현재일 때만 해제한다. 이미 밀려났다면 그 칸은 새 커넥션의 것이다.
      */
-    private void release(Long memberId, Connection connection) {
+    private void release(Long memberId, SseConnection connection) {
         connection.stop();
 
         // 현재인지 확인과 레지스트리 삭제를 원자적으로 한다. 사이가 벌어지면 그 틈에 등록된 새 커넥션을 지운다.
@@ -149,8 +149,8 @@ public class SseConnectionService {
         log.debug("SSE 자원 해제 완료 - memberId: {}", memberId);
     }
 
-    private void startHeartbeat(Long memberId, Connection connection) {
-        SseEmitter emitter = connection.emitter;
+    private void startHeartbeat(Long memberId, SseConnection connection) {
+        SseEmitter emitter = connection.emitter();
         ScheduledFuture<?> heartbeat = taskScheduler.scheduleAtFixedRate(() -> {
             try {
                 emitter.send(SseEmitter.event().name("heartbeat").data("연결 끊김 방지"));
@@ -170,42 +170,5 @@ public class SseConnectionService {
         // 스케줄 핸들을 커넥션에 붙여야 테어다운(완료/타임아웃/에러/재연결)에서 취소할 수 있다.
         // 스케줄하는 사이에 이미 밀려났거나 정리된 커넥션이면 붙이는 쪽이 바로 멈춘다.
         connection.attachHeartbeat(heartbeat);
-    }
-
-    /**
-     * 한 논리적 커넥션. 하트비트 핸들은 스케줄한 뒤에 붙고 다른 스레드가 멈출 수 있어, 두 필드 모두 volatile이다.
-     *
-     * <p>멈추는 쪽({@link #stop()})은 표시를 먼저 쓰고 핸들을 읽는다. 붙이는 쪽({@link #attachHeartbeat})은
-     * 핸들을 먼저 쓰고 표시를 읽는다. volatile 접근은 하나의 전체 순서를 따르므로, 둘이 엇갈려도 적어도
-     * 한쪽은 상대의 쓰기를 보고 하트비트를 멈춘다. 그래서 멈춘 커넥션에 하트비트가 살아남지 않는다.
-     */
-    private static final class Connection {
-
-        private final SseEmitter emitter;
-        private volatile ScheduledFuture<?> heartbeat;
-        private volatile boolean stopped;
-
-        private Connection(SseEmitter emitter) {
-            this.emitter = emitter;
-        }
-
-        /** 하트비트를 멈추고, 앞으로 붙을 하트비트도 바로 멈추도록 표시한다. 여러 번 불러도 된다. */
-        private void stop() {
-            stopped = true;
-            ScheduledFuture<?> scheduled = heartbeat;
-            if (scheduled != null) {
-                // false: 실행 중인 하트비트를 인터럽트하지 않고 다음 주기부터 멈춘다.
-                // (하트비트 자신의 실패 경로에서 호출될 수 있으므로 자기 인터럽트를 피한다)
-                scheduled.cancel(false);
-            }
-        }
-
-        /** 스케줄한 하트비트를 붙인다. 그 사이에 이미 멈춘 커넥션이면 붙이자마자 멈춘다. */
-        private void attachHeartbeat(ScheduledFuture<?> scheduled) {
-            heartbeat = scheduled;
-            if (stopped) {
-                scheduled.cancel(false);
-            }
-        }
     }
 }
