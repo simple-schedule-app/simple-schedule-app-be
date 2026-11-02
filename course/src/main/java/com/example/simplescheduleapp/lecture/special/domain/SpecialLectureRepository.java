@@ -3,6 +3,7 @@ package com.example.simplescheduleapp.lecture.special.domain;
 import com.example.simplescheduleapp.common.exception.ApplicationException;
 import com.example.simplescheduleapp.lecture.special.exception.SpecialLectureExceptionCode;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,6 +27,15 @@ public interface SpecialLectureRepository {
      * 화면이 조용히 흔들린다.
      */
     List<SpecialLecture> findAllOrderByStartTime();
+
+    /**
+     * 아직 끝나지 않은 특강 — {@code endTime >= now}. 삭제된 것은 제외한다.
+     *
+     * <p>"끝남"의 기준은 {@link SpecialLecture#hasEnded(LocalDateTime)}와 같은 {@code endTime}이다.
+     * 정원 키 복구가 "지금 신청을 받을 수 있는 특강"을 고르는 데 쓴다. {@code now}를 인자로 받아
+     * 어댑터가 시계를 읽지 않게 한다.
+     */
+    List<SpecialLecture> findAllNotEndedAsOf(LocalDateTime now);
 
     default SpecialLecture getById(Long id) {
         return findById(id).orElseThrow(() -> new ApplicationException(SpecialLectureExceptionCode.SPECIAL_LECTURE_NOT_FOUND));

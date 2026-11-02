@@ -31,6 +31,16 @@ public interface AtomicCounter {
      */
     void set(String key, long value, Duration ttl);
 
+    /**
+     * 키가 <b>없을 때만</b> 값과 TTL을 원자적으로 설정한다 (SET NX EX).
+     *
+     * <p>복구 경로 전용이다. 살아 있는 카운터는 이미 신청이 반영된 값이므로 덮어쓰면 그만큼 초과
+     * 판매가 된다. "없으면 넣고, 있으면 손대지 않는다"가 원자적으로 보장되어야 생성 경로와 겹쳐도 안전하다.
+     *
+     * @return 이 호출이 키를 새로 만들었으면 true, 이미 있어서 건드리지 않았으면 false
+     */
+    boolean setIfAbsent(String key, long value, Duration ttl);
+
     Long decrement(String key);
 
     Long increment(String key);

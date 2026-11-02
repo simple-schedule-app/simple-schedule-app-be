@@ -13,6 +13,9 @@ public interface SpecialLectureEnrollmentRepository {
 
     Optional<SpecialLectureEnrollment> findById(Long id);
 
+    /** 이 특강에 지금 남아 있는 신청 수. 정원 키 복구 시 "남은 자리 = 정원 - 이 값"의 근거다. */
+    long countBySpecialLectureId(Long specialLectureId);
+
     /**
      * 취소. <b>삭제된 행 수를 반환한다.</b>
      *

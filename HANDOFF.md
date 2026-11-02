@@ -47,7 +47,7 @@
    JOIN ssa.schedule s ON s.schedule_id = sl.schedule_id
    WHERE s.deleted_date IS NULL AND s.end_time > now() - interval '1 day';
    ```
-   행이 있으면 남은 정원(정원에서 신청 수를 뺀 값)으로 정원 키와 마감 키를 다시 넣어야 한다. 그 절차와 도구는 아직 없다(확인 필요).
+   행이 있어도 손으로 넣을 필요는 없다. `SpecialLectureCapacityReconcileScheduler`([course/.../lecture/special/application/](course/src/main/java/com/example/simplescheduleapp/lecture/special/application/SpecialLectureCapacityReconcileScheduler.java))가 기동 직후와 10분마다 "끝나지 않았는데 정원 키가 없는 특강"을 DB 기준(정원에서 신청 수를 뺀 값)으로 SET NX 되살린다. 있는 키는 건드리지 않는다. 첫 기동 뒤 `docker logs ssa-app | grep "되살렸다"`로 복구 건수를 보고 위 쿼리의 행 수와 맞는지 확인한다.
 3. **오너 결정 대기:**
    - 공유 호스트에서 CI 키에 docker 그룹(사실상 root 권한)을 줄지, 관리자와 정한다.
    - 시크릿 재발급 범위. 전부 재발급을 권한다.

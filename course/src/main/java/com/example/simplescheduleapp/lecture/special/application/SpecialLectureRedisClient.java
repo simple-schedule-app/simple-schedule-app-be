@@ -56,14 +56,38 @@ public class SpecialLectureRedisClient {
     // 특강 생성 시 수강 정원 설정 — TTL은 특강 종료 + 1일로 수명 정렬
     public void initializeSpecialLecture(Long specialLectureId, int capacity, LocalDateTime endTime) {
         String key = buildAvailableSpecialLectureCapacityKey(specialLectureId);
-        Duration ttl = Duration.between(LocalDateTime.now(), endTime.plusDays(1));
-        if (ttl.isZero() || ttl.isNegative()) {
-            ttl = FALLBACK_CAPACITY_TTL;
-        }
+        Duration ttl = resolveCapacityTtl(endTime);
         atomicCounter.set(key, capacity, ttl);
         // 마감 시각을 함께 캐시한다 — 이것이 있어야 신청 거절이 DB를 읽지 않고 이뤄진다.
         // 1차 방어선의 존재 이유가 DB 부하를 태우지 않는 것이므로, 시간 검증도 같은 층에 둔다.
         atomicCounter.set(buildDeadlineKey(specialLectureId), toEpochSecond(endTime), ttl);
+    }
+
+    /**
+     * 유실된 정원 키를 <b>없을 때만</b> 되살린다. 정원 키 복구 전용이다.
+     *
+     * <p>{@link #initializeSpecialLecture}와 달리 덮어쓰지 않는다. 살아 있는 카운터는 이미 신청이
+     * 반영된 값이라 덮어쓰면 그만큼 초과 판매가 된다. 그래서 SET NX로 "없으면 넣고 있으면 그대로"를
+     * 원자적으로 보장하고, 결과를 호출자에게 돌려준다. 마감 키도 같은 규칙으로 함께 채운다.
+     *
+     * @param remaining 남은 자리. 호출자가 DB로 계산한다(정원 - 신청 수). 0 미만이면 0으로 둔다
+     * @return 정원 키를 이 호출이 새로 만들었으면 true. 이미 있었으면 false(아무것도 바꾸지 않음)
+     */
+    public boolean restoreCapacityIfAbsent(Long specialLectureId, long remaining, LocalDateTime endTime) {
+        Duration ttl = resolveCapacityTtl(endTime);
+        boolean created = atomicCounter.setIfAbsent(
+                buildAvailableSpecialLectureCapacityKey(specialLectureId), Math.max(remaining, 0L), ttl);
+        // 마감 키는 정원 키와 독립적으로 사라질 수 있어 따로 본다. 둘 다 NX라 생성 경로와 겹쳐도 안전하다.
+        atomicCounter.setIfAbsent(buildDeadlineKey(specialLectureId), toEpochSecond(endTime), ttl);
+        return created;
+    }
+
+    private Duration resolveCapacityTtl(LocalDateTime endTime) {
+        Duration ttl = Duration.between(LocalDateTime.now(), endTime.plusDays(1));
+        if (ttl.isZero() || ttl.isNegative()) {
+            return FALLBACK_CAPACITY_TTL;
+        }
+        return ttl;
     }
 
     // 특강 수강 신청 시도 --> 정원 체크 및 카운트 감소 (원자적 check-and-decrement)
