@@ -2,6 +2,7 @@ package com.example.simplescheduleapp.lecture.special.infrastructure.persistence
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -11,4 +12,7 @@ import java.util.List;
 interface SpecialLectureJpaRepository extends JpaRepository<SpecialLectureEntity, Long> {
 
     List<SpecialLectureEntity> findAllByOrderByStartTimeAsc();
+
+    /** 소프트 삭제 제외는 {@code ScheduleEntity}의 {@code @SQLRestriction}이 자동으로 건다. */
+    List<SpecialLectureEntity> findAllByEndTimeGreaterThanEqualOrderByIdAsc(LocalDateTime now);
 }

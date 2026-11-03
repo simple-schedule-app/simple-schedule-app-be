@@ -76,6 +76,16 @@ public class RedisAtomicCounter implements AtomicCounter {
     }
 
     @Override
+    public boolean setIfAbsent(String key, long value, Duration ttl) {
+        Objects.requireNonNull(ttl, "ttl must not be null");
+        if (ttl.isZero() || ttl.isNegative()) {
+            throw new IllegalArgumentException("ttl must be positive: " + ttl);
+        }
+        // SET key value NX EX seconds — 존재 검사와 설정이 한 명령이라 생성 경로와 경합해도 둘 중 하나만 쓴다
+        return Boolean.TRUE.equals(stringRedisTemplate.opsForValue().setIfAbsent(key, String.valueOf(value), ttl));
+    }
+
+    @Override
     public Long decrement(String key) {
         return stringRedisTemplate.opsForValue().decrement(key);
     }

@@ -11,6 +11,8 @@ import org.springframework.data.repository.query.Param;
  */
 interface SpecialLectureEnrollmentJpaRepository extends JpaRepository<SpecialLectureEnrollmentEntity, Long> {
 
+    long countBySpecialLectureId(Long specialLectureId);
+
     /**
      * 벌크 삭제 — 엔티티를 로드하지 않고 <b>영향 행 수를 그대로</b> 받는다.
      *

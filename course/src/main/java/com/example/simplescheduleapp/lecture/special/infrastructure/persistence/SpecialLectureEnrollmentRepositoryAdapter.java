@@ -32,4 +32,9 @@ public class SpecialLectureEnrollmentRepositoryAdapter implements SpecialLecture
     public int deleteBySpecialLectureIdAndStudentId(Long specialLectureId, Long studentId) {
         return jpaRepository.deleteBySpecialLectureIdAndStudentId(specialLectureId, studentId);
     }
+
+    @Override
+    public long countBySpecialLectureId(Long specialLectureId) {
+        return jpaRepository.countBySpecialLectureId(specialLectureId);
+    }
 }
