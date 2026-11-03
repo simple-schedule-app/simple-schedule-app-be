@@ -137,6 +137,8 @@ sudo chmod 700 /opt/ssa/secrets
 
 `.env`와 FCM 키는 §1과 같다(`.env` 600, FCM 키 644, 소유자 `ssa-deploy`). `.env`의 `GHCR_OWNER`는 `simple-schedule-app`이다.
 
+**첫 배포 직전 (DB).** Supabase 무료 프로젝트는 7일 동안 연결이 없으면 일시정지된다(2026-10-31에 실제로 멈췄다, 오너 메일). 일시정지 상태면 대시보드에서 먼저 켠다(Restore). 켜도 pooler 주소는 그대로다. 켜지 않으면 앱이 기동 중 DB 연결에서 실패해 Flyway 검증까지 가지 못하고 스모크가 실패한다. 켠 뒤 7일 안에 배포하지 않으면 다시 멈추므로 배포 직전에 켠다. 진행 중 특강 확인 쿼리(`HANDOFF.md` §5의 2)도 DB가 켜져 있어야 돈다.
+
 **공개 접점 (Cloudflare Tunnel).** [CLOUDFLARE-TUNNEL.md](CLOUDFLARE-TUNNEL.md) 절차를 그대로 따른다. 터널 compose는 앱 스택이 만든 네트워크(`ssa_app_network`)에 올라타므로, 첫 배포가 끝난 뒤에 띄운다.
 
 **첫 배포 뒤 확인**

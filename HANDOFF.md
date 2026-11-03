@@ -18,7 +18,7 @@
 - ✅ [#86](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/86) `dda418c` 밀려난 SSE 커넥션의 정리가 같은 회원의 새 커넥션을 지우지 않게 했다. 테스트 5개: [SseSupersededConnectionTest](notification/src/test/java/com/example/simplescheduleapp/sse/presentation/SseSupersededConnectionTest.java)
 - ✅ [#87](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/87) `dacf3da` `SseController` 설명 정정(웹도 `EventSourcePolyfill`로 SSE를 쓴다)
 - ✅ [#89](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/89) `9d77af8` 새 운영 서버 기준 배포 런북. FCM 키 권한을 600에서 644로 바로잡았다(§7)
-- 🔶 [#88](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/88) SSE 회원당 다중 연결 구현 계획. open, 오너 승인 대기. 브랜치 `docs/sse-multi-connection-plan`
+- ✅ [#88](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/88) `6f2f8ab` SSE 회원당 다중 연결 구현 계획(develop 머지). 오너 승인 2026-10-23(기존 테스트 변경 포함, Native). 구현은 첫 Oracle 배포 뒤에 시작한다
 - 🔶 [#90](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/90) 릴리스 PR(develop → main). open, CI 통과(7m35s, 8m3s). **머지 보류**: 새 서버 준비를 오너가 확인한 뒤 머지한다(2026-10-19 오너 결정)
 - 운영 사건: 2026-10-18 운영 서버가 교체됐다. 옛 `10.64.212.20`은 내려갔고 `.env`, FCM 키, 볼륨이 남지 않았다. 새 서버 `10.64.212.40`(`agent-worker`, Rocky Linux 10.2)은 관리자의 에이전트 작업과 같은 VM을 쓰는 공유 호스트이고, 2026-10-19 기준 아무것도 배포되지 않았다. 그래서 운영 서비스는 지금 멈춰 있다
 - 그 전 이력 요약: 2026-08-02 단일 JVM 대점프 릴리스(Boot 4.1, ADR-0004, ADR-0005, Flyway 최초 실행). 2026-10-02 릴리스 [#82](https://github.com/simple-schedule-app/simple-schedule-app-be/pull/82)(account P1, 운영 `ddl-auto: validate`, Kafka 재시도 수정, 의존성 업그레이드)가 옛 서버의 마지막 성공 배포다(`e53fa71`)
@@ -51,7 +51,6 @@
 3. **오너 결정 대기:**
    - 공유 호스트에서 CI 키에 docker 그룹(사실상 root 권한)을 줄지, 관리자와 정한다.
    - 시크릿 재발급 범위. 전부 재발급을 권한다.
-   - #88 다중 연결 계획의 승인과 실행 방식.
    - 터널 ① realip 구현 승인.
 4. **남은 부채:**
    - 시크릿 로테이션.
@@ -114,7 +113,7 @@ memguard -- ./gradlew --max-workers=2 buildAll                      # CI와 같�
 | 하려는 일 | 첫 행동 |
 |---|---|
 | 서버 준비가 끝나 배포 | 오너 확인 → §5의 2 쿼리로 진행 중 특강 확인 → WireGuard 끄기 → `gh pr merge 90 --merge` → Deploy 실행 결과와 스모크 401 확인 → [deploy/README.md](deploy/README.md) §1의 "확인" 절 |
-| #88 승인됨 | 브랜치 `docs/sse-multi-connection-plan`의 `docs/superpowers/plans/2026-10-15-sse-multi-connection.md`를 읽고 Task 1부터 |
+| 첫 Oracle 배포가 끝남(#88 착수) | [docs/superpowers/plans/2026-10-15-sse-multi-connection.md](docs/superpowers/plans/2026-10-15-sse-multi-connection.md)를 읽고 Task 1부터(Native, 2026-10-23 승인) |
 | 터널 ① 구현 승인됨 | [docs/superpowers/plans/2026-10-04-tunnel-launch-seams.md](docs/superpowers/plans/2026-10-04-tunnel-launch-seams.md)의 ① |
 | 특강 정원 키 재적재 도구 | `SpecialLectureRedisClient.initializeSpecialLecture`와 신청 수 집계를 묶는 일회성 절차부터 설계 |
 | 부채 정리 | §5의 4 목록에서 하나를 골라 계획부터 |
